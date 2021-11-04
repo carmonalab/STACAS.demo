@@ -1,0 +1,358 @@
+---
+title: Integrating scRNA-seq data using STACAS and Seurat3
+date: "31/03/2020"
+knit: (function(input_file, encoding) {
+  out_dir <- 'docs';
+  rmarkdown::render(input_file, encoding=encoding, output_file=file.path(dirname(input_file), out_dir, 'tutorial.html'))})
+output:
+  html_document:
+    theme: readable
+---
+
+This demo will run you through a complete dataset integration using Seurat 3 and STACAS. We will be using the four following datasets:
+
+* Cd8+ tumor infiltrating lymphocytes (TILs), from Carmona et al. GEO: [GSE116390](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE116390)
+
+* Cd8+/CD4+  (TILs), from Xiong et al. ArrayExpress: [E-MTAB-7919](https://www.ebi.ac.uk/arrayexpress/experiments/E-MTAB-7919/) 
+
+* CD4+ TILs, from Magen et al. GEO: [GSE124691](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE124691)
+
+* CD4+ T cells from draining lymph nodes, from Magen et al. GEO: [GSE124691](https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE124691)
+
+To run the code on your machine, clone the [STACAS.demo GitLab repository](https://gitlab.unil.ch/carmona/STACAS.demo)
+
+First, check dependencies and install STACAS
+```{r results=F, warning=FALSE,message=FALSE}
+if (!requireNamespace("remotes")) install.packages("remotes")
+library(remotes)
+
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+
+if (!requireNamespace("Seurat", quietly = TRUE)) {
+   BiocManager::install("multtest")
+   install.packages("Seurat")
+}
+
+if (!requireNamespace("AUCell", quietly = TRUE))
+    BiocManager::install("AUCell")
+if (!requireNamespace("SingleCellExperiment", quietly = TRUE))
+    BiocManager::install("SingleCellExperiment")
+
+remotes::install_github("carmonalab/TILPRED")
+remotes::install_github("carmonalab/STACAS")
+```
+
+Load required packages
+```{r results=F, warning=FALSE,message=FALSE}
+library(Seurat)
+library(STACAS)
+library(TILPRED)
+library(AUCell)
+library(SingleCellExperiment)
+library(ggplot2)
+library(reshape2)
+library(grid)
+library(gridExtra)
+
+## Get this object at:
+#https://gitlab.unil.ch/carmona/STACAS.demo/blob/master/aux/cellCycle.symbol.DE.specific.170120.csv
+cellCycle.symbol <- read.csv("aux/cellCycle.symbol.DE.specific.170120.csv",as.is=T)$x
+```
+
+Download data from GEO, or load pre-computed dataset list
+```{r warning=FALSE}
+do_download = T
+if (do_download) {
+  source("./download.sets.STACAS.demo.R")
+}  
+raw.list <- readRDS("raw.list.demo.rds")
+raw.list
+```
+
+Run TILPRED to get an idea of what kinds of cells are in each dataset
+```{r echo = T, results = F, message=F}
+for (i in 1:length(raw.list)) {
+   
+   print(paste0("Cell state predictions for ", names(raw.list)[i], ":"))
+   sce <- as.SingleCellExperiment(raw.list[[i]])
+   sce.pred <- predictTilState(sce)
+
+   raw.list[[i]] <- AddMetaData(raw.list[[i]], metadata=sce.pred$predictedState, col.name = "state.pred")
+   raw.list[[i]] <- AddMetaData(raw.list[[i]], metadata=sce.pred$cycling, col.name = "cycling")
+   raw.list[[i]]$Study <- names(raw.list)[[i]]
+}
+stateColorsPred2 <- c("#FF0000","#0000FF","#F8766D","#A58AFF","#00B6EB","#53B400",
+                      "#FF00FF","#E5ED14","#33333355","#000000","#33333388")
+names(stateColorsPred2) <- c("Treg","CD4T","CD8T_Naive","CD8T_EffectorMemory","CD8T_MemoryLike","CD8T_Exhausted",
+                      "Cycling","CD8T_unknown","Tcell_unknown","Non-Tcell","unknown") 
+```
+
+Remove non-Tcells and cycling cells
+```{r results = F, warning=FALSE,message=FALSE}
+ref.list <- raw.list
+for (i in 1:length(raw.list)) {
+   ref.list[[i]] <- subset(ref.list[[i]], subset = cycling==FALSE)
+   ref.list[[i]] <- subset(ref.list[[i]], subset = state.pred %in% c("Non-Tcell","unknown"), invert=T)
+}
+```
+
+## Control 1 - Combine datasets without alignment
+Observe the large batch effects separating each dataset - there is no overlap between samples.
+Also note the heterogeneity of individual sets: the Cd8+ contains a relatively large fraction of naive-like and effector-memory cells; the Cd4+ sets are mainly composed (unsurpisingly) of Cd4 T cells and Tregs; the Cd4+/Cd8+ set contains the largest diversity of cells types. 
+```{r results = F, warning=FALSE,message=FALSE}
+ref.merged <- Reduce(merge,ref.list)
+
+ndim=10
+set.seed(1234)
+ref.merged <- NormalizeData(ref.merged, verbose = FALSE)
+ref.merged <- FindVariableFeatures(ref.merged, selection.method = "vst", nfeatures = 800, verbose = FALSE)
+
+mito.genes <- grep(pattern = "^mt-", rownames(ref.merged), value = TRUE)
+ribo.genes <- grep(pattern = "^Rp[ls]", rownames(ref.merged), value = TRUE)
+    
+ref.merged@assays$RNA@var.features <- setdiff(ref.merged@assays$RNA@var.features,cellCycle.symbol)
+ref.merged@assays$RNA@var.features <- setdiff(ref.merged@assays$RNA@var.features,ribo.genes)
+ref.merged@assays$RNA@var.features <- setdiff(ref.merged@assays$RNA@var.features,mito.genes)
+
+ref.merged <- ScaleData(ref.merged)
+ref.merged <- RunPCA(ref.merged, features = ref.merged@assays$RNA@var.features, ndims.print = 1:5, nfeatures.print = 5)
+
+ref.merged <- RunUMAP(ref.merged, reduction = "pca", dims = 1:ndim, seed.use=123)
+
+DimPlot(ref.merged, reduction = "umap", group.by = "Study") + ggtitle("UMAP by study")
+
+ref.merged$state.pred.cycle <- ref.merged$state.pred
+ref.merged$state.pred.cycle[ref.merged$cycling==T] <- "Cycling"
+ref.merged$celltype.pred.states <- ref.merged$state.pred.cycle
+
+DimPlot(ref.merged, reduction="umap", label=F, group.by = "celltype.pred.states", repel=T, cols=stateColorsPred2) + 
+     ggtitle ("UMAP of predicted states")
+
+
+```
+
+## Control 2 - Seurat alignment with default method
+Here we apply Seurat 3 to find variable genes, calculate integration anchors, and finally integrate the data.
+```{r results = F, warning=FALSE,message=FALSE}
+ref.list.default <- ref.list
+
+all.genes <- row.names(ref.list.default[[1]])
+for (i in 2:length(ref.list.default)) {
+   all.genes <- intersect(all.genes, row.names(ref.list.default[[i]]))
+}
+
+var.genes.n <- 800
+var.genes.integrated.n <- 500
+ndim <- 10
+
+for (i in 1:length(ref.list.default)) {
+    ref.list.default[[i]] <- NormalizeData(ref.list.default[[i]], verbose = FALSE)
+    
+    ref.list.default[[i]] <- FindVariableFeatures(ref.list.default[[i]], selection.method = "vst", 
+        nfeatures = var.genes.n*2, verbose = FALSE)
+    
+    mito.genes <- grep(pattern = "^mt-", rownames(ref.list.default[[i]]), value = TRUE)
+    ribo.genes <- grep(pattern = "^Rp[ls]", rownames(ref.list.default[[i]]), value = TRUE)
+    
+    ref.list.default[[i]]@assays$RNA@var.features <- setdiff(ref.list.default[[i]]@assays$RNA@var.features, cellCycle.symbol)
+    ref.list.default[[i]]@assays$RNA@var.features <- setdiff(ref.list.default[[i]]@assays$RNA@var.features, mito.genes)
+    ref.list.default[[i]]@assays$RNA@var.features <- setdiff(ref.list.default[[i]]@assays$RNA@var.features, ribo.genes)
+    ref.list.default[[i]]@assays$RNA@var.features <- head(ref.list.default[[i]]@assays$RNA@var.features, var.genes.n)
+}
+
+#Find integration anchors using CCA
+ref.anchors.default <- FindIntegrationAnchors(ref.list.default, dims = 1:ndim, anchor.features=var.genes.integrated.n)
+
+#And finally integrate
+ref.integrated.default <- IntegrateData(anchorset = ref.anchors.default, dims = 1:ndim, features.to.integrate = all.genes)
+
+ref.integrated.default@tools$Integration@sample.tree
+```
+
+After integration, we can examine how the transformation has affected the expression value of some important genes. Note how the distribution for Cd4 and Cd8a have been rescaled around a similar mean and variance - some important biological signal that distiguishes the different samples has been lost in the process.
+```{r fig.width=10, fig.asp=0.4}
+Idents(ref.integrated.default) = "Study"
+DefaultAssay(ref.integrated.default) <- "RNA"
+VlnPlot(ref.integrated.default, features=c("Cd2","Cd3g","Cd8a","Cd4","Pdcd1","Tcf7"), pt.size = 0, ncol=6)
+
+DefaultAssay(ref.integrated.default) <- "integrated"
+VlnPlot(ref.integrated.default, features=c("Cd2","Cd3g","Cd8a","Cd4","Pdcd1","Tcf7"), pt.size = 0, ncol=6)
+```
+
+
+We can plot the integrated samples in a low-dimensional space (UMAP) and highlight some key markers genes. The UMAP seems to indicate the CCA over-corrected the gene expression values, removing biological signal together with batch effects.
+```{r results = F, warning=FALSE,message=FALSE}
+set.seed(1234)
+
+ndim=15
+
+ref.integrated.default <- ScaleData(ref.integrated.default, verbose = TRUE)
+ref.integrated.default <- RunPCA(ref.integrated.default, features = ref.integrated.default@assays$integrated@var.features,
+                         ndims.print = 1:5, nfeatures.print = 5)
+
+ref.integrated.default <- RunUMAP(ref.integrated.default, reduction = "pca", dims = 1:ndim, seed.use=123, n.neighbors = 30, min.dist=0.3)
+
+DimPlot(ref.integrated.default, reduction = "umap", group.by = "Study") + ggtitle("UMAP by study")
+
+ref.integrated.default$state.pred.cycle <- ref.integrated.default$state.pred
+ref.integrated.default$state.pred.cycle[ref.integrated.default$cycling==T] <- "Cycling"
+
+ref.integrated.default$celltype.pred.states <- ref.integrated.default$state.pred.cycle
+
+#By predicted state
+DimPlot(ref.integrated.default, reduction="umap", label=F, group.by = "celltype.pred.states", repel=T, cols=stateColorsPred2) + 
+     ggtitle ("UMAP of predicted states")
+
+DefaultAssay(ref.integrated.default) <- "RNA"
+FeaturePlot(ref.integrated.default, reduction = "umap", features=c("Cd4","Cd8b1","Pdcd1","Tcf7"), pt.size = 0.01, slot = "data", ncol=2, sort.cell=T)
+FeaturePlot(ref.integrated.default, reduction = "umap", features=c("Foxp3","Gzmb","Havcr2","Tox"), pt.size = 0.01, slot = "data", ncol=2, sort.cell=T)
+```
+
+
+# 3 - Integration with STACAS
+
+The normalization and identification of variable features is the same as in standad Seurat pipelines.
+```{r results = F, warning=FALSE,message=FALSE}
+
+var.genes.n <- 800
+var.genes.integrated.n <- 500
+
+for (i in 1:length(ref.list)) {
+    ref.list[[i]] <- NormalizeData(ref.list[[i]], verbose = FALSE)
+    
+    ref.list[[i]] <- FindVariableFeatures(ref.list[[i]], selection.method = "vst", 
+        nfeatures = var.genes.n*2, verbose = FALSE)
+    
+    mito.genes <- grep(pattern = "^mt-", rownames(ref.list[[i]]), value = TRUE)
+    ribo.genes <- grep(pattern = "^Rp[ls]", rownames(ref.list[[i]]), value = TRUE)
+    
+    ref.list[[i]]@assays$RNA@var.features <- setdiff(ref.list[[i]]@assays$RNA@var.features, cellCycle.symbol)
+    ref.list[[i]]@assays$RNA@var.features <- setdiff(ref.list[[i]]@assays$RNA@var.features, mito.genes)
+    ref.list[[i]]@assays$RNA@var.features <- setdiff(ref.list[[i]]@assays$RNA@var.features, ribo.genes)
+    ref.list[[i]]@assays$RNA@var.features <- head( ref.list[[i]]@assays$RNA@var.features, var.genes.n)
+}
+```
+
+Find integration anchors with pair-wise dataset distances. This function is based on FindAnchors in Seurat, but does not center or scale the data (i.e. does not impose zero mean and unit variance for variable genes) prior to running reciprocal PCA for anchor finding. It also returns pairwise distances betwen anchors, which can be used in the next step for anchor filtering.
+```{r results = F, warning=FALSE,message=FALSE}  
+ndim=10
+ref.anchors <- FindAnchors.STACAS(ref.list, dims=1:ndim, anchor.features=var.genes.integrated.n)
+```
+
+Plot the distance distribution between the anchors calculated in the previous step. A default threshold for filtering anchors is set at the 80th percentile of the distance between the two closest datasets, but can also be specified manually after inspecting the distance distributions.
+```{r fig.height=12, fig.width=10, warning=FALSE,message=FALSE}
+names <- names(ref.list)
+
+plots <- PlotAnchors.STACAS(ref.anchors, obj.names=names)
+
+g.cols <- 2
+g.rows <- as.integer((length(plots)+2)/g.cols)
+g <- do.call("arrangeGrob", c(plots, ncol=g.cols, nrow=g.rows))
+
+plot(g)
+```
+
+Filter anchors with default threshold (80th percentile of the distance between the two closest datasets)
+```{r}
+ref.anchors.filtered <- FilterAnchors.STACAS(ref.anchors)
+```
+
+
+Inspect the effect of filtering on the number of anchors between dataset pairs.
+```{r}
+#Before
+anchor.stats.before <- table(ref.anchors@anchors[,c("dataset1","dataset2")])
+
+#After
+anchor.stats.after <- table(ref.anchors.filtered@anchors[,c("dataset1","dataset2")])
+
+rownames(anchor.stats.before) <- names(ref.list)
+colnames(anchor.stats.before) <- names(ref.list)
+rownames(anchor.stats.after) <- names(ref.list)
+colnames(anchor.stats.after) <- names(ref.list)
+anchor.stats.before
+anchor.stats.after
+
+anchor.stats.before.norm <- apply(anchor.stats.before, 1, function(x) {x/sum(x)})
+toplot <- melt(anchor.stats.before.norm, varnames=c("Dataset1","Dataset2"), value.name = "Fraction")
+ggplot(toplot, aes(fill=Dataset1, y=Fraction, x=Dataset2)) + 
+    geom_bar(position="stack", stat="identity") +
+  theme(axis.text.x = element_text(angle = 45)) +
+    ggtitle("Fraction of anchors between data sets - BEFORE anchor filtering")
+
+anchor.stats.after.norm <- apply(anchor.stats.after, 1, function(x) {x/sum(x)})
+toplot <- melt(anchor.stats.after.norm, varnames=c("Dataset1","Dataset2"), value.name = "Fraction")
+ggplot(toplot, aes(fill=Dataset1, y=Fraction, x=Dataset2)) + 
+    geom_bar(position="stack", stat="identity") +
+  theme(axis.text.x = element_text(angle = 45)) +
+    ggtitle("Fraction of anchors between data sets - AFTER anchor filtering")
+```
+
+Now we have calculated and filtered a set of anchors for integration. Based on these anchors, STACAS can also determine an optimal integration tree (that is, the order in which dataset should be integrated), and we can then pass this tree together with the anchor set to the IntegrateData function in Seurat.
+```{r message=F, warning=F}
+all.genes <- row.names(ref.list[[1]])
+for (i in 2:length(ref.list)) {
+   all.genes <- intersect(all.genes, row.names(ref.list[[i]]))
+}
+
+mySampleTree <- SampleTree.STACAS(ref.anchors.filtered)
+print(mySampleTree)
+
+ref.integrated <- IntegrateData(anchorset=ref.anchors.filtered, dims=1:ndim, features.to.integrate=all.genes,
+                                sample.tree=mySampleTree, preserve.order=T)
+```
+
+
+We can check that integration did not remove all biological differences between data sets in term of gene expression.
+```{r fig.width=10, fig.asp=0.4}
+Idents(ref.integrated) = "Study"
+DefaultAssay(ref.integrated) <- "RNA"
+VlnPlot(ref.integrated, features=c("Cd2","Cd3g","Cd8a","Cd4","Pdcd1","Tcf7"), pt.size = 0, ncol=6)
+
+DefaultAssay(ref.integrated) <- "integrated"
+VlnPlot(ref.integrated, features=c("Cd2","Cd3g","Cd8a","Cd4","Pdcd1","Tcf7"), pt.size = 0, ncol=6)
+```
+
+Finally, we can examine the integrated map made from the four samples. Cells from the same cell types (as predicted by TILPRED) cluster together, and important gene markers for T cells delineate clear sub-type areas and meaningful gradients.
+```{r results = F, warning=FALSE,message=FALSE}
+set.seed(1234)
+
+ndim=15
+length(ref.integrated@assays$integrated@var.features)
+
+ref.integrated <- ScaleData(ref.integrated, verbose = TRUE)
+ref.integrated <- RunPCA(ref.integrated, features = ref.integrated@assays$integrated@var.features,
+                         ndims.print = 1:5, nfeatures.print = 5)
+
+ndim=10  #how many PCA components to retain
+
+ref.integrated <- RunUMAP(ref.integrated, reduction = "pca", dims = 1:ndim, seed.use=123, n.neighbors = 30, min.dist=0.3)
+
+DimPlot(ref.integrated, reduction = "umap", group.by = "Study") + ggtitle("UMAP by study")
+
+ref.integrated$state.pred.cycle <- ref.integrated$state.pred
+ref.integrated$state.pred.cycle[ref.integrated$cycling==T] <- "Cycling"
+
+ref.integrated$celltype.pred.states <- ref.integrated$state.pred.cycle
+
+#By predicted state
+DimPlot(ref.integrated, reduction="umap", label=F, group.by = "celltype.pred.states", repel=T, cols=stateColorsPred2) +
+  ggtitle ("UMAP of predicted states")
+
+DefaultAssay(ref.integrated) <- "RNA"
+FeaturePlot(ref.integrated, reduction = "umap", features=c("Cd4","Cd8b1","Pdcd1","Tcf7"), pt.size = 0.01, slot = "data", ncol=2, sort.cell=T)
+FeaturePlot(ref.integrated, reduction = "umap", features=c("Foxp3","Gzmb","Havcr2","Tox"), pt.size = 0.01, slot = "data", ncol=2, sort.cell=T)
+
+DefaultAssay(ref.integrated) <- "integrated"
+```
+
+### STACAS wrapper function
+Optionally to running FindAnchors.STACAS, PlotAnchors.STACAS and FilterAnchor.STACAS, you may also more simply invoke the command Run.STACAS, which automatized the process of anchor finding and filtering.
+```{r eval=F, fig.height=6, fig.width=5}
+dist.pct=0.8
+ref.anchors.filtered.wrap <- Run.STACAS(ref.list, dims=1:ndim, anchor.features=var.genes.integrated.n, dist.pct=dist.pct)
+```
+
+
+
