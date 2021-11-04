@@ -1,4 +1,4 @@
-# Integrating scRNA-seq data using STACAS and Seurat 3
+# scRNA-seq data integration using STACAS
 
 [This demo](https://carmonalab.github.io/STACAS/tutorial.html) will run you through a complete dataset integration using Seurat 3 and STACAS. It reproduces the results and figures in [Andreatta & Carmona, bioRxiv 2020](https://doi.org/10.1101/2020.06.15.152306)
 
@@ -23,6 +23,6 @@ Then move to the `STACAS.demo` folder and open the `STACAS.demo.Rproj` in RStudi
 
 If you have problems with the installation, you may also download a [Docker image](https://hub.docker.com/r/mandrea1/stacas_demo) of the project with all dependencies pre-installed.
 
-See also a precompiled html version of this demo at: [STACAS Tutorial](https://carmonalab.github.io/STACAS/tutorial.html)
+See also a precompiled html version of this demo at: [STACAS Tutorial](https://carmonalab.github.io/STACAS.demo/tutorial.html)
 
 For installation and documentation on the `STACAS` package refer to the [STACAS Github repository](https://github.com/carmonalab/STACAS)
