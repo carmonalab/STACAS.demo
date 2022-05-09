@@ -29,17 +29,10 @@ library(remotes)
 if (!requireNamespace("BiocManager", quietly = TRUE))
   install.packages("BiocManager")
 
-if (!requireNamespace("Seurat", quietly = TRUE)) {
-   BiocManager::install("multtest")
-   install.packages("Seurat")
-}
+if (!requireNamespace("TILPRED", quietly = TRUE))
+  remotes::install_github("carmonalab/TILPRED")
 
-if (!requireNamespace("AUCell", quietly = TRUE))
-    BiocManager::install("AUCell")
-if (!requireNamespace("SingleCellExperiment", quietly = TRUE))
-    BiocManager::install("SingleCellExperiment")
-
-remotes::install_github("carmonalab/TILPRED")
+if (!requireNamespace("STACAS", quietly = TRUE))
 remotes::install_github("carmonalab/STACAS")
 ```
 
@@ -48,16 +41,17 @@ Load required packages
 library(Seurat)
 library(STACAS)
 library(TILPRED)
-library(AUCell)
-library(SingleCellExperiment)
 library(ggplot2)
 library(reshape2)
 library(grid)
 library(gridExtra)
 
 ## Get this object at:
-#https://gitlab.unil.ch/carmona/STACAS.demo/blob/master/aux/cellCycle.symbol.DE.specific.170120.csv
-cellCycle.symbol <- read.csv("aux/cellCycle.symbol.DE.specific.170120.csv",as.is=T)$x
+cellCycle.csv <- 'cellCycle.symbol.DE.specific.170120.csv'
+url <- sprintf("https://github.com/carmonalab/STACAS.demo/tree/master/aux/%s",cellCycle.csv)
+download.file(url, cellCycle.csv)
+#https://github.com/carmonalab/STACAS.demo/tree/master/aux/cellCycle.symbol.DE.specific.170120.csv
+cellCycle.symbol <- read.csv(cellCycle.csv,as.is=T)$x
 ```
 
 Download data from GEO, or load pre-computed dataset list

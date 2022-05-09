@@ -1,6 +1,6 @@
 {
   "R": {
-    "Version": "4.0.2",
+    "Version": "4.0.5",
     "Repositories": [
       {
         "Name": "CRAN",
@@ -399,6 +399,13 @@
       "Repository": "CRAN",
       "Hash": "9addc7e2c5954eca5719928131fed98c"
     },
+    "bslib": {
+      "Package": "bslib",
+      "Version": "0.3.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "56ae7e1987b340186a8a5a157c2ec358"
+    },
     "caTools": {
       "Package": "caTools",
       "Version": "1.18.0",
@@ -582,10 +589,10 @@
     },
     "fastmap": {
       "Package": "fastmap",
-      "Version": "1.0.1",
+      "Version": "1.1.0",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "83ab58a0518afe3d17e41da01af13b60"
+      "Hash": "77bd60a6157420d4ffa93b27cf6a58b8"
     },
     "fitdistrplus": {
       "Package": "fitdistrplus",
@@ -607,6 +614,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "ad36e26eeeb7393886d8a0e19bc6ee42"
+    },
+    "fs": {
+      "Package": "fs",
+      "Version": "1.5.2",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "7c89603d81793f0d5486d91ab1fc6f1d"
     },
     "futile.logger": {
       "Package": "futile.logger",
@@ -742,10 +756,10 @@
     },
     "htmltools": {
       "Package": "htmltools",
-      "Version": "0.5.0",
+      "Version": "0.5.2",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "7d651b7131794fe007b1ad6f21aaa401"
+      "Hash": "526c484233f42522278ab06fb185cb26"
     },
     "htmlwidgets": {
       "Package": "htmlwidgets",
@@ -802,6 +816,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "117128f48662573ff4c4e72608b9e202"
+    },
+    "jquerylib": {
+      "Package": "jquerylib",
+      "Version": "0.1.4",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "5aab57a3bd297eee1c1d862735972182"
     },
     "jsonlite": {
       "Package": "jsonlite",
@@ -1146,17 +1167,17 @@
     },
     "rlang": {
       "Package": "rlang",
-      "Version": "0.4.7",
+      "Version": "1.0.2",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "c06d2a6887f4b414f8e927afd9ee976a"
+      "Hash": "04884d9a75d778aca22c7154b8333ec9"
     },
     "rmarkdown": {
       "Package": "rmarkdown",
-      "Version": "2.3",
+      "Version": "2.14",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "202260e1b2c410edc086d5b8f1ed946e"
+      "Hash": "31b60a882fabfabf6785b8599ffeb8ba"
     },
     "rngtools": {
       "Package": "rngtools",
@@ -1192,6 +1213,13 @@
       "Source": "Repository",
       "Repository": "CRAN",
       "Hash": "3a6b30449282b6a4b19ce267142c3299"
+    },
+    "sass": {
+      "Package": "sass",
+      "Version": "0.4.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "f37c0028d720bab3c513fd65d28c7234"
     },
     "scales": {
       "Package": "scales",
@@ -1328,10 +1356,10 @@
     },
     "tinytex": {
       "Package": "tinytex",
-      "Version": "0.25",
+      "Version": "0.38",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "a4b9662282097d1033c60420dcb83350"
+      "Hash": "759d047596ac173433985deddf313450"
     },
     "utf8": {
       "Package": "utf8",
@@ -1370,10 +1398,10 @@
     },
     "xfun": {
       "Package": "xfun",
-      "Version": "0.16",
+      "Version": "0.30",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "b4106139b90981a8bfea9c10bab0baf1"
+      "Hash": "e83f48136b041845e50a6658feffb197"
     },
     "xml2": {
       "Package": "xml2",
