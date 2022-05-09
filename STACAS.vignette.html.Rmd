@@ -45,13 +45,6 @@ library(ggplot2)
 library(reshape2)
 library(grid)
 library(gridExtra)
-
-## Get this object at:
-cellCycle.csv <- 'cellCycle.symbol.DE.specific.170120.csv'
-url <- sprintf("https://github.com/carmonalab/STACAS.demo/tree/master/aux/%s",cellCycle.csv)
-download.file(url, cellCycle.csv)
-#https://github.com/carmonalab/STACAS.demo/tree/master/aux/cellCycle.symbol.DE.specific.170120.csv
-cellCycle.symbol <- read.csv(cellCycle.csv,as.is=T)$x
 ```
 
 Download data from GEO, or load pre-computed dataset list
@@ -84,6 +77,12 @@ names(stateColorsPred2) <- c("Treg","CD4T","CD8T_Naive","CD8T_EffectorMemory","C
 
 Remove non-Tcells and cycling cells
 ```{r results = F, warning=FALSE,message=FALSE}
+#Cell cycling signature
+cellCycle.csv <- 'cellCycle.symbol.DE.specific.170120.csv'
+url <- sprintf("https://github.com/carmonalab/STACAS.demo/tree/master/aux/%s",cellCycle.csv)
+download.file(url, cellCycle.csv)
+cellCycle.symbol <- read.csv(cellCycle.csv,as.is=T)$x
+
 ref.list <- raw.list
 for (i in 1:length(raw.list)) {
    ref.list[[i]] <- subset(ref.list[[i]], subset = cycling==FALSE)
