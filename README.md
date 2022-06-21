@@ -1,6 +1,6 @@
 # scRNA-seq data integration using STACAS
 
-[This demo](https://carmonalab.github.io/STACAS.demo/tutorial.html) will run you through a complete dataset integration using Seurat 3 and STACAS. It reproduces the results and figures in [Andreatta & Carmona, bioRxiv 2020](https://doi.org/10.1101/2020.06.15.152306)
+[This demo](https://carmonalab.github.io/STACAS.demo/tutorial.html) will run you through a complete dataset integration using Seurat 3 and STACAS. It reproduces the results and figures in [Andreatta & Carmona, Bioinformatics 2021](https://doi.org/10.1093/bioinformatics/btaa755)
 
 We will be using the four following datasets:
 
