@@ -590,9 +590,9 @@
       "RemoteHost": "api.github.com",
       "RemoteRepo": "STACAS",
       "RemoteUsername": "carmonalab",
-      "RemoteRef": "dev",
-      "RemoteSha": "c9825ebdf285edc2e930dc1e8d0252786a9dff9e",
-      "Hash": "05ea4dcfdd339935f547dd5516915fb2",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "6cdbe0f5e8ef9f24130676985a63533905d5a838",
+      "Hash": "f43bc8ad7149de6189fdab5761004739",
       "Requirements": [
         "Seurat",
         "future",
@@ -734,8 +734,8 @@
       "RemoteRepo": "TILPRED",
       "RemoteUsername": "carmonalab",
       "RemoteRef": "HEAD",
-      "RemoteSha": "51041dea3ca04115a6ae58906e5999a50e2cbf9a",
-      "Hash": "c435d23c50cbce0c12d8eaf88880f8d7",
+      "RemoteSha": "ec56b79813a9ad9779ee98d623fb00d3802dfad4",
+      "Hash": "a291607969645bc4365e5c5693c33dc9",
       "Requirements": [
         "AUCell",
         "BiocManager",

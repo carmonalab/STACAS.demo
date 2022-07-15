@@ -9,6 +9,9 @@ STACAS is a method for scRNA-seq integration. It is based on the [Seurat](https:
 In [this demo](https://carmonalab.github.io/STACAS.demo/STACAS.demo.html) we will show the application of STACAS to integrate a collection of PBMC datasets, used also in the very comprehensive [benchmark by Luecken et al.](https://www.nature.com/articles/s41592-021-01336-8). The data are available on figshare at: [figshare/12420968](https://figshare.com/articles/dataset/Benchmarking_atlas-level_data_integration_in_single-cell_genomics_-_integration_task_datasets_Immune_and_pancreas_/12420968)
 
 
+See also how STACAS integration compares to Seurat, and how it avoids overcorrecting batch effects for heterogeneous data sets, at this [demo on T cell data integration](https://carmonalab.github.io/STACAS.demo/Tcell.demo.html)
+
+
 ### How to play the demo
 
 Copy this repository to your local system:
