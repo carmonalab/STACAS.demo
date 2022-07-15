@@ -18,11 +18,11 @@ knit: (function(input_file, encoding) {
 
 STACAS is a method for scRNA-seq integration. It is based on the [Seurat](https://cran.r-project.org/web/packages/Seurat/index.html) integration framework, but adds important innovations:
 
-* **anchors can be filtered/down-weighted** based on their distance in reciprocal PCA space
-* **integration trees** are constructed based on the 'centrality' of datasets, as measured by the sum of their anchor weights
+* **anchors can be filtered/down-weighted** based on their distance in reciprocal PCA space, calculated from the unscaled, normalized data
+* **integration trees** are constructed based on the 'centrality' of datasets, as measured by the sum of their anchor scores
 * **cell type labels**, if known, can be given as input to the algorithm to perform **semi-supervised integration**
 
-In this demo we will show the application of STACAS to integrate a collection of PBMC datasets, used also in the very comprehensive [benchmark by Luecken et al.](https://www.nature.com/articles/s41592-021-01336-8). The data are available on figshare at: [figshare/12420968](https://figshare.com/articles/dataset/Benchmarking_atlas-level_data_integration_in_single-cell_genomics_-_integration_task_datasets_Immune_and_pancreas_/12420968)
+In this demo we will show the application of STACAS to integrate a collection of PBMC datasets, used also in the excellent, comprehensive [benchmark by Luecken et al.](https://www.nature.com/articles/s41592-021-01336-8). The data are available at: [figshare/12420968](https://figshare.com/articles/dataset/Benchmarking_atlas-level_data_integration_in_single-cell_genomics_-_integration_task_datasets_Immune_and_pancreas_/12420968)
 
 # R environment
 
@@ -55,7 +55,7 @@ set.seed(seed)
 
 Download the collection of PBMC datasets assembled by [Luecken et al.](https://www.nature.com/articles/s41592-021-01336-8), and convert them to Seurat objects.
 ```{r}
-download <- F
+download <- T
 where <- 'aux'
 dir.create(where, showWarnings = FALSE)
 
@@ -103,7 +103,8 @@ b <- DimPlot(luecken.seurat, group.by = "final_annotation", label=T, label.size 
 a | b
 ```
 
-Cells mostly cluster by the cell types annotated in individual datasets, but there are batch effects (=dataset-specific signals). We can try to quantify how much by LISI and silhouette coefficients.
+Cells mostly cluster by the cell types annotated in individual datasets, but there are batch effects (=dataset-specific signals). 
+We can try to quantify how much by LISI (Local Inverse Simpson’s Index)[https://www.nature.com/articles/s41592-019-0619-0] and silhouette coefficients (aka Average Silhouette Width).
 
 ```{r}
 red <- "pca"
@@ -169,7 +170,7 @@ integrated.data.unsup <- IntegrateData.STACAS(stacas_anchors, dims=1:ndim, sampl
                                  features.to.integrate=stacas_anchors@anchor.features)
 ```
 
-Calculate low-dimensional embeddings and see integration results in UMAP space
+Calculate low-dimensional embeddings and visualize integration results in UMAP
 ```{r results=F, warning=F, message=F}
 DefaultAssay(integrated.data.unsup) <- "integrated"
 integrated.data.unsup <- integrated.data.unsup %>% ScaleData() %>% RunPCA(npcs=ndim)
@@ -183,7 +184,7 @@ p2 <- DimPlot(integrated.data.unsup, group.by = "final_annotation", label=T, lab
 p1 | p2
 ```
 
-LISI and silhouette on integrated data
+LISI and silhouette integration quality metrics on integrated data
 ```{r}
 red <- "pca"
 red.ndim <- 10
@@ -270,13 +271,13 @@ res.sil.avg_ss
 
 # Integration metrics summary
 
-We have calculated LISI and silhouette coefficients based on the cell type annotations ("final_annotation") and on the sample of origin ("batch"). These correspond respectively to *cluster* metrics (***cLISI*** and ***cSil***) and to *integration* metrics (***iLISI*** and ***iSil***), which can be interpreted as follows:
+We have calculated LISI and silhouette coefficients based on the cell type annotations ("final_annotation") and on the sample of origin ("batch"). These correspond respectively to *cluster* metrics (***cLISI*** and ***cSil***) and to *batch mixing* metrics (***iLISI*** and ***iSil***), which can be interpreted as follows:
 
-* ***cLISI*** measures the local mixing of cluster labels (it should be as close as possible to 1). It tells how many classes (=cell types) are found around each cell on average. **This measure is sensitive to the size of the groups, and does not account for repeated structures in the data (i.e. it is a local measure of mixing)**
+* ***iLISI*** measures the local mixing of datasets. It should be high for well mixed datasets (up to the number of datasets). However, when cell types are only present in one or few studies, high iLISI for these cell types would in fact be undesiderable, and indicative of overcorrection. 
 
-* ***iLISI*** measures the local mixing of datasets. It should be high, for well mixed datasets. However, when cell types are only present in one or few studies, high iLISI for these cell types would in fact be undesiderable, and indicative of overcorrection. Per-cell type iLISI would in this case be perhaps more appropriate. 
+* ***cLISI*** measures the local mixing of cell labels (or clusters, or cell types), and it should be as close as possible to 1. It tells how many different labels are found around each cell on average. **This measure is sensitive to the size of the groups, and does not account for repeated structures in the data (i.e. it is a local measure of mixing)**
 
-* ***cSil*** is the silhouette coefficient for cluster labels. It measures the average distance between cells with the same label (= cell type). It is a global measure and should be good to evaluate the quality of integration in terms of cell annotations.
+* ***cSil*** is the silhouette coefficient for cell labels (or clusters, or cell types). It measures the average distance between cells with the same label (= cell type), compared to cells with different label. It is a global measure and should be good to evaluate the quality of integration in terms of cell annotations.
 
 * ***iSil*** is the silhouette coefficient per dataset. Not straightforward to interpret.
 
