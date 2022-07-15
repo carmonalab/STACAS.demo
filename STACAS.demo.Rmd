@@ -35,7 +35,7 @@ BiocManager::install('zellkonverter')
 
 library(remotes)
 install_github("https://github.com/carmonalab/scIntegrationMetrics")
-install_github("https://github.com/carmonalab/STACAS", ref="dev")
+install_github("https://github.com/carmonalab/STACAS")
 ```
 
 ```{r message=F, warning=F,results=F}

@@ -52,7 +52,7 @@ options(future.globals.maxSize= 8000*1024^2, future.seed=TRUE)
 
 Download data from GEO, or load pre-computed dataset list
 ```{r results=F, warning=FALSE, message=FALSE}
-do_download = T
+do_download = F
 if (do_download) {
   source("./download.sets.STACAS.demo.R")
 }  
@@ -73,9 +73,9 @@ for (i in 1:length(raw.list)) {
    raw.list[[i]]$Study <- names(raw.list)[[i]]
 }
 stateColorsPred2 <- c("#FF0000","#0000FF","#F8766D","#A58AFF","#00B6EB","#53B400",
-                      "#FF00FF","#E5ED14","#33333355","#000000","#33333388")
+                      "#E5ED14","#33333355")
 names(stateColorsPred2) <- c("Treg","CD4T","CD8T_Naive","CD8T_EffectorMemory","CD8T_MemoryLike","CD8T_Exhausted",
-                      "Cycling","CD8T_unknown","Tcell_unknown","Non-Tcell","unknown") 
+                      "CD8T_unknown","Tcell_unknown") 
 ```
 
 Remove non-Tcells and cycling cells
@@ -108,11 +108,7 @@ ref.merged <- RunUMAP(ref.merged, reduction = "pca", dims = 1:ndim, seed.use=123
 
 DimPlot(ref.merged, reduction = "umap", group.by = "Study") + ggtitle("UMAP by study")
 
-ref.merged$state.pred.cycle <- ref.merged$state.pred
-ref.merged$state.pred.cycle[ref.merged$cycling==T] <- "Cycling"
-ref.merged$celltype.pred.states <- ref.merged$state.pred.cycle
-
-DimPlot(ref.merged, reduction="umap", label=F, group.by = "celltype.pred.states", repel=T, cols=stateColorsPred2) + 
+DimPlot(ref.merged, reduction="umap", label=F, group.by = "state.pred", repel=T, cols=stateColorsPred2) + 
      ggtitle ("UMAP of predicted states")
 
 
@@ -132,11 +128,17 @@ var.genes.n <- 800
 var.genes.integrated.n <- 500
 ndim <- 10
 
+mito.genes <- grep(pattern = "^mt-", rownames(ref.list[[i]]), value = TRUE)
+ribo.genes <- grep(pattern = "^Rp[ls]", rownames(ref.list[[i]]), value = TRUE)
+my.blocklist <- c(mito.genes, ribo.genes)
+
 for (i in 1:length(ref.list.default)) {
     ref.list.default[[i]] <- NormalizeData(ref.list.default[[i]], verbose = FALSE)
     
-    ref.list.default[[i]] <- FindVariableFeatures(ref.list.default[[i]], selection.method = "vst", 
-        nfeatures = var.genes.n, verbose = FALSE)
+    ref.list.default[[i]] <- FindVariableFeatures(ref.list.default[[i]],
+                                                  nfeatures = var.genes.n, verbose = FALSE)
+    
+    VariableFeatures(ref.list.default[[i]]) <- setdiff(VariableFeatures(ref.list.default[[i]]), my.blocklist)
 }
 
 #Find integration anchors using CCA
@@ -166,20 +168,18 @@ set.seed(1234)
 ndim=15
 
 ref.integrated.default <- ScaleData(ref.integrated.default, verbose = TRUE)
-ref.integrated.default <- RunPCA(ref.integrated.default, features = ref.integrated.default@assays$integrated@var.features,
-                         ndims.print = 1:5, nfeatures.print = 5)
+ref.integrated.default <- RunPCA(ref.integrated.default,
+                                 features = ref.integrated.default@assays$integrated@var.features)
 
-ref.integrated.default <- RunUMAP(ref.integrated.default, reduction = "pca", dims = 1:ndim, seed.use=123, n.neighbors = 30, min.dist=0.3)
+ref.integrated.default <- RunUMAP(ref.integrated.default, reduction = "pca", dims = 1:ndim,
+                                  seed.use=123)
 
 DimPlot(ref.integrated.default, reduction = "umap", group.by = "Study") + ggtitle("UMAP by study")
 
-ref.integrated.default$state.pred.cycle <- ref.integrated.default$state.pred
-ref.integrated.default$state.pred.cycle[ref.integrated.default$cycling==T] <- "Cycling"
-
-ref.integrated.default$celltype.pred.states <- ref.integrated.default$state.pred.cycle
 
 #By predicted state
-DimPlot(ref.integrated.default, reduction="umap", label=F, group.by = "celltype.pred.states", repel=T, cols=stateColorsPred2) + 
+DimPlot(ref.integrated.default, reduction="umap", label=F, group.by = "state.pred",
+        repel=T, cols=stateColorsPred2) + 
      ggtitle ("UMAP of predicted states")
 
 DefaultAssay(ref.integrated.default) <- "RNA"
@@ -269,13 +269,9 @@ ref.integrated <- RunUMAP(ref.integrated, reduction = "pca", dims = 1:ndim, seed
 
 DimPlot(ref.integrated, reduction = "umap", group.by = "Study") + ggtitle("UMAP by study")
 
-ref.integrated$state.pred.cycle <- ref.integrated$state.pred
-ref.integrated$state.pred.cycle[ref.integrated$cycling==T] <- "Cycling"
-
-ref.integrated$celltype.pred.states <- ref.integrated$state.pred.cycle
 
 #By predicted state
-DimPlot(ref.integrated, reduction="umap", label=F, group.by = "celltype.pred.states", repel=T, cols=stateColorsPred2) +
+DimPlot(ref.integrated, reduction="umap", label=F, group.by = "state.pred", repel=T, cols=stateColorsPred2) +
   ggtitle ("UMAP of predicted states")
 
 DefaultAssay(ref.integrated) <- "RNA"
