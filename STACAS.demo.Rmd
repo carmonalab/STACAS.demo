@@ -27,7 +27,7 @@ In this demo we will show the application of STACAS to integrate a collection of
 # R environment
 
 Get and load some useful packages
-```{r message=F, warning=F,results=F, eval=T}
+```{r message=F, warning=F,results=F, eval=F}
 renv::restore()
 
 BiocManager::install('remotes')
@@ -55,7 +55,7 @@ set.seed(seed)
 
 Download the collection of PBMC datasets assembled by [Luecken et al.](https://www.nature.com/articles/s41592-021-01336-8), and convert them to Seurat objects.
 ```{r}
-download <- T
+download <- F
 where <- 'aux'
 dir.create(where, showWarnings = FALSE)
 
@@ -324,7 +324,7 @@ b <- ggplot(m[m$Metric=="cSil",], aes(x=Method, y=value, fill=Method)) +
 a | b
 ```
 
-## Important notes
+# Important notes
 
 1. The first critical step in batch effect correction is to ensure that the **gene names in your datasets are harmonized**. If different studies use different naming conventions, synonyms, etc., methods for dimensionality reduction will treat these genes as entirely different variables, and introducing artificial differences between datasets. It is recommended that your pre-processing pipeline takes care of resolving ambiguities in gene naming across datasets.
 
@@ -354,13 +354,13 @@ obj.list <- lapply(obj.list, function(x) {
 anchor.features <- SelectIntegrationFeatures(obj.list, nfeatures = nIntFeatures)
 ```
 
-## Further reading
+# Further reading
 
 The STACAS package and installation instructions are available at: [STACAS package](https://github.com/carmonalab/STACAS)
 
 The code for this demo can be found on [GitHub](https://github.com/carmonalab/STACAS.demo)
 
-## References
+# References
 
 * Andreatta A., Carmona S. J. (2021). *STACAS: Sub-Type Anchor Correction for Alignment in Seurat to integrate single-cell RNA-seq data.* - Bioinformatics
 
