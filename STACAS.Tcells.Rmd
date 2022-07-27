@@ -373,6 +373,14 @@ FeaturePlot(ref.integrated, reduction = "umap", features=c("Foxp3","Gzmb","Havcr
             pt.size = 0.01, slot = "data", ncol=2)
 ```
 
+# STACAS wrapper
+
+The standard STACAS integration pipeline (**1.** *Finding anchors*; **2.** *Integration tree*; **3.** *Dataset integration*) can also be run with a single command through the `Run.STACAS` wrapper. For example, for semi-supervised integration of the datasets in this demo:
+
+```{r results=F, message=F, warning=F}
+integrated <- Run.STACAS(ref.list, dims=1:ndim, anchor.features=2000,
+                                  cell.labels = "scGate_multi")
+```
 
 # Further reading
 
