@@ -27,7 +27,7 @@ In this demo we will show the application of STACAS to integrate a collection of
 # R environment
 
 Get and load some useful packages
-```{r message=F, warning=F,results=F, eval=T}
+```{r message=F, warning=F,results=F, eval=F}
 renv::restore()
 
 if (!require("remotes", quietly = TRUE))
@@ -258,13 +258,13 @@ stacas_anchors <- FindAnchors.STACAS(obj.list,
                                      )
 ```
 
-## Further reading
+# Further reading
 
 The STACAS package and installation instructions are available at: [STACAS package](https://github.com/carmonalab/STACAS)
 
 The code for this demo can be found on [GitHub](https://github.com/carmonalab/STACAS.demo)
 
-## References
+# References
 
 * Andreatta A., Carmona S. J. (2021). *STACAS: Sub-Type Anchor Correction for Alignment in Seurat to integrate single-cell RNA-seq data.* - Bioinformatics
 
