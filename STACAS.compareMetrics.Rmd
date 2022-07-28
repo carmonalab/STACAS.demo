@@ -18,25 +18,26 @@ knit: (function(input_file, encoding) {
 
 STACAS is a method for scRNA-seq integration. It is based on the [Seurat](https://cran.r-project.org/web/packages/Seurat/index.html) integration framework, but adds important innovations:
 
-* **anchors are filtered/down-weighted** based on their distance in reciprocal PCA space, calculated from the unscaled, normalized data
-* **integration trees** are constructed based on the 'centrality' of datasets, as measured by the sum of their anchor (distance-weighted) scores
-* **cell labels**, if known, can be given as input to the algorithm to perform **semi-supervised integration**
+* **anchors can be filtered/down-weighted** based on their distance in reciprocal PCA space, calculated from the unscaled, normalized data
+* **integration trees** are constructed based on the 'centrality' of datasets, as measured by the sum of their anchor scores
+* **cell type labels**, if known, can be given as input to the algorithm to perform **semi-supervised integration**
 
-In this demo we will show the application of STACAS to integrate a collection of PBMC datasets, used also in the excellent and comprehensive [benchmark by Luecken et al.](https://www.nature.com/articles/s41592-021-01336-8). The data are available at: [figshare/12420968](https://figshare.com/articles/dataset/Benchmarking_atlas-level_data_integration_in_single-cell_genomics_-_integration_task_datasets_Immune_and_pancreas_/12420968)
+In this demo we will show the application of STACAS to integrate a collection of PBMC datasets, used also in the excellent, comprehensive [benchmark by Luecken et al.](https://www.nature.com/articles/s41592-021-01336-8). The data are available at: [figshare/12420968](https://figshare.com/articles/dataset/Benchmarking_atlas-level_data_integration_in_single-cell_genomics_-_integration_task_datasets_Immune_and_pancreas_/12420968)
 
 # R environment
 
 Get and load some useful packages
-```{r message=F, warning=F,results=F, eval=T}
+```{r message=F, warning=F,results=F, eval=F}
 renv::restore()
 
 BiocManager::install('remotes')
 BiocManager::install('zellkonverter')
 
 library(remotes)
-install_github("carmonalab/scIntegrationMetrics")
-install_github("carmonalab/STACAS")
+install_github("https://github.com/carmonalab/scIntegrationMetrics")
+install_github("https://github.com/carmonalab/STACAS")
 ```
+
 
 ```{r message=F, warning=F,results=F}
 library(Seurat)
@@ -55,7 +56,7 @@ set.seed(seed)
 
 Download the collection of PBMC datasets assembled by [Luecken et al.](https://www.nature.com/articles/s41592-021-01336-8), and convert them to Seurat objects.
 ```{r}
-download <- T
+download <- F
 where <- 'aux'
 dir.create(where, showWarnings = FALSE)
 
@@ -103,7 +104,7 @@ b <- DimPlot(luecken.seurat, group.by = "final_annotation", label=T, label.size 
 a | b
 ```
 
-Cells mostly cluster by the cell types annotated in individual datasets, but there are batch effects (dataset-specific signals). 
+Cells mostly cluster by the cell types annotated in individual datasets, but there are batch effects (=dataset-specific signals). 
 We can try to quantify how much by LISI (Local Inverse Simpson’s Index)[https://www.nature.com/articles/s41592-019-0619-0] and silhouette coefficients (aka Average Silhouette Width).
 
 ```{r}
@@ -324,7 +325,7 @@ b <- ggplot(m[m$Metric=="cSil",], aes(x=Method, y=value, fill=Method)) +
 a | b
 ```
 
-## Important notes
+# Important notes
 
 1. The first critical step in batch effect correction is to ensure that the **gene names in your datasets are harmonized**. If different studies use different naming conventions, synonyms, etc., methods for dimensionality reduction will treat these genes as entirely different variables, and introducing artificial differences between datasets. It is recommended that your pre-processing pipeline takes care of resolving ambiguities in gene naming across datasets.
 
@@ -354,13 +355,13 @@ obj.list <- lapply(obj.list, function(x) {
 anchor.features <- SelectIntegrationFeatures(obj.list, nfeatures = nIntFeatures)
 ```
 
-## Further reading
+# Further reading
 
 The STACAS package and installation instructions are available at: [STACAS package](https://github.com/carmonalab/STACAS)
 
 The code for this demo can be found on [GitHub](https://github.com/carmonalab/STACAS.demo)
 
-## References
+# References
 
 * Andreatta A., Carmona S. J. (2021). *STACAS: Sub-Type Anchor Correction for Alignment in Seurat to integrate single-cell RNA-seq data.* - Bioinformatics
 
