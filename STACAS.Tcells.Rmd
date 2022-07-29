@@ -55,8 +55,6 @@ library(grid)
 library(gridExtra)
 library(patchwork)
 library(remotes)
-
-options(future.globals.maxSize= 8000*1024^2, future.seed=TRUE)
 ```
 
 # Data preparation
