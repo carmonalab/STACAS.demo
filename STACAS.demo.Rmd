@@ -233,7 +233,7 @@ When available, cell type annotations can be used to guide the alignment. STACAS
 In this dataset, cells were annotated by the authors of the benchmark. For your own data, you may want to do manual annotation or apply one of several cell annotation tools, such as [SingleR](https://bioconductor.org/packages/release/bioc/html/SingleR.html), [Garnett](https://cole-trapnell-lab.github.io/garnett/) or [scGate](https://github.com/carmonalab/scGate). We will be posting some examples of cell type annotation using `scGate` in a different demo.
 
 ** One-liner semi-supervised STACAS ** by indicating in `cell.labels` the metadata column that contains cell annotations
-```{r}
+```{r, results=F, warning=F, message=F }
 object_integrated_ss <- obj.list %>% Run.STACAS(dims = 1:ndim, anchor.features = nfeatures, cell.labels = "final_annotation" )
 ```
 
@@ -313,6 +313,9 @@ object_integrated_blockList <- Run.STACAS(obj.list, genesBlockList = my.genes.bl
 
 ```
 
+```{r}
+sessionInfo()
+```
 
 # Further reading
 
