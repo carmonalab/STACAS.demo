@@ -37,7 +37,7 @@ if (!require("remotes", quietly = TRUE))
 
 library(remotes)
 
-install_github("https://github.com/carmonalab/STACAS")
+install_github("carmonalab/STACAS", ref="dev")
 ```
 
 
@@ -139,7 +139,7 @@ integrationMetrics[["uncorrected"]]
 
 Let's run STACAS for correcting batch effects.
 
-# STACAS unsupervised integration
+# Standard integration
 
 STACAS takes a list of Seurat objects as input, so let's first split the merged object into a list of individual batches/datasets
 ```{r, warning=F, collapse =T, message =F}
@@ -192,9 +192,10 @@ ii) increase in Silhouette/ASW, indicating that cells with the same annotation (
 
 # One-liner STACAS
 
-The previous integration could have been run with a single command:
+The previous integration could have been run from the inital object with a single command:
 ```{r, eval=F}
-object_integrated <- Run.STACAS(obj.list, dims = 1:ndim, anchor.features = nfeatures)
+object_integrated <- object %>% SplitObject(split.by = "batch") %>% Run.STACAS(dims = 1:ndim, anchor.features = nfeatures) %>% RunUMAP(dims = 1:ndim) 
+DimPlot(object_integrated, group.by = "batch")
 ```
 
 
@@ -224,53 +225,23 @@ object_integrated <- IntegrateData.STACAS(stacas_anchors,
 
 
 
-# STACAS integration - semi-supervised
+# Semi-supervised integration
 
 When available, cell type annotations can be used to guide the alignment. STACAS will use this information to penalize anchors where cell types are inconsistent.
 
 In this dataset, cells were annotated by the authors of the benchmark. For your own data, you may want to do manual annotation or apply one of several cell annotation tools, such as [SingleR](https://bioconductor.org/packages/release/bioc/html/SingleR.html), [Garnett](https://cole-trapnell-lab.github.io/garnett/) or [scGate](https://github.com/carmonalab/scGate). We will be posting some examples of cell type annotation using `scGate` in a different demo.
 
-
-**semi-supervised STACAS step 1:** Calculate anchors taking into account cell labels by indicating the corresponding metadata column in `cell.labels` 
-
-```{r, warning=F, collapse =T,message =F}
-stacas_anchors_ss <- FindAnchors.STACAS(obj.list,
-                                        anchor.features = nfeatures,
-                                        dims = 1:ndim,
-                                        label.confidence = 1,
-                                        cell.labels = "final_annotation")
+** One-liner semi-supervised STACAS ** by indicating in `cell.labels` the metadata column that contains cell annotations
+```{r}
+object_integrated_ss <- obj.list %>% Run.STACAS(dims = 1:ndim, anchor.features = nfeatures, cell.labels = "final_annotation" )
 ```
+
 
 Note that there is no need for ALL cells to be annotated: we recommend to set labels to *NA* or *unknown* for cells that cannot be confidently annotated, and they won't be penalized for label inconsistency. In addition, you can decide how much weight to give to cell labels with the `label.confidence` parameter (from 0 to 1).
 
-
-Optionally, check out the new default integration tree 
-```{r}
-st2 <- SampleTree.STACAS(
-  anchorset = stacas_anchors_ss,
-  obj.names = names(obj.list)
-  )
-```
-
-**semi-supervised STACAS step 2:** Integrate the datasets using the labels-informed anchor set, using `semisupervised=TRUE`
+Visualize on UMAP space
 ```{r results=F, warning=F, message=F}
-object_integrated_ss <- IntegrateData.STACAS(stacas_anchors_ss, 
-                                             dims=1:ndim,
-                                             semisupervised=TRUE)
-```
-
-
-** One-liner semi-supervised STACAS **
-
-The previous integration could have been run with the single command:
-```{r, eval=F}
-object_integrated_ss <- Run.STACAS(obj.list, dims = 1:ndim, anchor.features = nfeatures, cell.labels = "final_annotation" )
-```
-
-
-Calculate low-dimensional embeddings and see integration results in UMAP space
-```{r results=F, warning=F, message=F}
-object_integrated_ss <- object_integrated_ss %>% ScaleData() %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
+object_integrated_ss <- object_integrated_ss %>% RunUMAP(dims=1:ndim)
 ```
 
 ```{r fig.height=7, fig.width=16}
@@ -300,6 +271,8 @@ In this case we observe a >20% increase in cell annotation silhouette (celltype_
 
 
 ```{r}
+if (!require("tidyr", quietly = TRUE))
+install.packages("tidyr")
 
 integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) %>% tibble::rownames_to_column() %>% rename(value=unlist.integrationMetrics.) %>% separate(rowname, c("Method","Metric"), sep="\\.")
 
