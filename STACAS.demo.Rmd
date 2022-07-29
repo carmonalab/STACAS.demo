@@ -113,10 +113,10 @@ p2_pre <- DimPlot(object, group.by = "final_annotation", label=T, label.size = 4
 p1_pre | p2_pre
 ```
 
-Although cells mostly cluster by the cell type (as annotated in individual datasets) but there are also visible batch effects (seen as dataset-specific clustering) 
+Although cells mostly cluster by the cell type (as annotated in individual datasets), there are also visible batch effects (seen as dataset-specific clustering) 
 
 
-Let's quantify dataset/batch mixing using Raychaudhuri Lab's [LISI](https://github.com/immunogenomics/LISI), and conservation of biological information by means of Average Silhouette Width (ASW) of cell labels in the corrected PCA space:
+Let's quantify dataset/batch mixing using the [LISI metric](https://github.com/immunogenomics/LISI) from the Raychaudhuri Lab, and conservation of biological information by means of Average Silhouette Width (ASW) of cell labels in the corrected PCA space:
 ```{r}
 
 integrationMetrics <- list()
@@ -137,7 +137,7 @@ integrationMetrics[["uncorrected"]]
 
 
 
-Let's run STACAS for correcting batch effects.
+We will now apply STACAS for correcting batch effects.
 
 # Standard integration
 
@@ -154,7 +154,7 @@ stacas_anchors <- FindAnchors.STACAS(obj.list,
                                      dims = 1:ndim)
 ```
 
-**STACAS step 2:** dataset integration
+**STACAS step 2:** Dataset integration
 ```{r results=F, warning=F, message=F}
 object_integrated <- IntegrateData.STACAS(stacas_anchors, 
                                               dims=1:ndim)
@@ -185,14 +185,14 @@ integrationMetrics[["STACAS"]]
 ```
 
 
-Compared to the non-corrected data, we observed now 
+Compared to the non-corrected data, we now observe: 
 i) increase in dataset/batch LISI (i.e. effective number of different batches in a cell neighborhood), indicating a higher mixing
 ii) increase in Silhouette/ASW, indicating that cells with the same annotation (ie of the same kind) were brought into proximity
 
 
 # One-liner STACAS
 
-The previous integration could have been run from the inital object with a single command:
+The previous integration could have been run from the initial object with a single command:
 ```{r, eval=F}
 object_integrated <- object %>% SplitObject(split.by = "batch") %>% Run.STACAS(dims = 1:ndim, anchor.features = nfeatures) %>% RunUMAP(dims = 1:ndim) 
 DimPlot(object_integrated, group.by = "batch")
@@ -212,7 +212,7 @@ st1 <- SampleTree.STACAS(
   )
 ```
 
-You can tune or manually re-calculate this tree and passed it to `IntegrateData.STACAS`:
+You can tune or manually re-calculate this tree and pass it to `IntegrateData.STACAS`:
 
 **STACAS step 2 with pre-calculated integration tree**
 ```{r results=F, warning=F, message=F, eval=F}
