@@ -22,12 +22,14 @@ STACAS is a method for scRNA-seq data integration. It is based on the [Seurat](h
 * **integration trees** are constructed based on the 'centrality' of datasets, as measured by the sum of their anchor (distance-weighted) scores
 * **cell labels**, if known, can be given as input to the algorithm to perform **semi-supervised integration**
 
-In this demo we will show the application of STACAS to integrate a collection of PBMC datasets, used also in the excellent and comprehensive [benchmark by Luecken et al.](https://www.nature.com/articles/s41592-021-01336-8). The data are available at: [figshare/12420968](https://figshare.com/articles/dataset/Benchmarking_atlas-level_data_integration_in_single-cell_genomics_-_integration_task_datasets_Immune_and_pancreas_/12420968)
+In this demo we will show the application of STACAS to integrate a collection of scRNA-seq datasets of immune cells from multiple donors, human tissues and studies, assembled by [Luecken et al.](https://www.nature.com/articles/s41592-021-01336-8) for their excellent benchmark.
+
+The data are available at: [figshare/12420968](https://figshare.com/articles/dataset/Benchmarking_atlas-level_data_integration_in_single-cell_genomics_-_integration_task_datasets_Immune_and_pancreas_/12420968)
 
 # R environment
 
 Get and load some useful packages
-```{r message=F, warning=F,results=F, eval=F}
+```{r message=F, warning=F,results=F, eval=T}
 renv::restore()
 
 if (!require("remotes", quietly = TRUE))
@@ -51,7 +53,7 @@ set.seed(seed)
 
 # Load test datasets
 
-Download the dataset of human immune cells collected from multiple donors, tissues and studies, assembled by [Luecken et al.](https://www.nature.com/articles/s41592-021-01336-8), and convert them to Seurat objects.
+Download the dataset of human immune cells assembled by [Luecken et al.](https://www.nature.com/articles/s41592-021-01336-8), and convert them to Seurat objects.
 ```{r}
 download <- F
 where <- 'aux'
@@ -104,13 +106,37 @@ object <- FindVariableFeatures(object, nfeatures = nfeatures) %>% NormalizeData(
 ```
 
 ```{r fig.height=7, fig.width=16}
-a <- DimPlot(object, group.by = "batch") + theme(aspect.ratio = 1) + ggtitle("Before integration")
-b <- DimPlot(object, group.by = "final_annotation", label=T, label.size = 4) + theme(aspect.ratio = 1)
+p1_pre <- DimPlot(object, group.by = "batch") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch before integration")
+p2_pre <- DimPlot(object, group.by = "final_annotation", label=T, label.size = 4) + theme(aspect.ratio = 1) + ggtitle("Cell labels before integration")
 
-a | b
+
+p1_pre | p2_pre
 ```
 
-Cells mostly cluster by the cell type (as annotated in individual datasets) but there are also visible batch effects (seen as dataset-specific clustering) 
+Although cells mostly cluster by the cell type (as annotated in individual datasets) but there are also visible batch effects (seen as dataset-specific clustering) 
+
+
+Let's quantify dataset/batch mixing using Raychaudhuri Lab's [LISI](https://github.com/immunogenomics/LISI), and conservation of biological information by means of Average Silhouette Width (ASW) of cell labels in the corrected PCA space:
+```{r}
+
+integrationMetrics <- list()
+
+if (!require("scIntegrationMetrics", quietly = TRUE))
+install_github("carmonalab/scIntegrationMetrics") #calculates LISI and Silhouette
+library(scIntegrationMetrics)
+
+integrationMetrics[["uncorrected"]] <- list()
+
+integrationMetrics[["uncorrected"]][["batch_LISI"]] <- mean(compute_lisi(object@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="batch", perplexity = 20)[[1]]) # perplexity=effective number of each cell's neighbors; use lower than default to make it faster
+
+integrationMetrics[["uncorrected"]][["celltype_ASW"]] <- mean(compute_silhouette(object@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="final_annotation")[[1]])
+
+integrationMetrics[["uncorrected"]]
+
+```
+
+
+
 Let's run STACAS for correcting batch effects.
 
 # STACAS unsupervised integration
@@ -121,14 +147,14 @@ obj.list <- SplitObject(object, split.by = "batch")
 ```
 
 
-STACAS Step 1: Find integration anchors
+**STACAS Step 1:** Find integration anchors
 ```{r, warning=F, collapse =T,message =F}
 stacas_anchors <- FindAnchors.STACAS(obj.list, 
                                      anchor.features = nfeatures,
                                      dims = 1:ndim)
 ```
 
-STACAS step 2: dataset integration
+**STACAS step 2:** dataset integration
 ```{r results=F, warning=F, message=F}
 object_integrated <- IntegrateData.STACAS(stacas_anchors, 
                                               dims=1:ndim)
@@ -139,18 +165,44 @@ Calculate low-dimensional embeddings and visualize integration results in UMAP
 object_integrated <- object_integrated %>% ScaleData() %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
 ```
 
-```{r fig.height=7, fig.width=16}
-p1 <- DimPlot(object_integrated, group.by = "batch") + theme(aspect.ratio = 1) + ggtitle("Unsupervised")
-p2 <- DimPlot(object_integrated, group.by = "final_annotation", label=T, label.size = 2) + theme(aspect.ratio = 1)
 
-p1 | p2
+```{r fig.height=7, fig.width=16}
+p1_int <- DimPlot(object_integrated, group.by = "batch") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch after integration")
+p2_int <- DimPlot(object_integrated, group.by = "final_annotation", label=T, label.size = 2) + theme(aspect.ratio = 1) + ggtitle("Cell labels after integration") 
+
+p1_int | p2_int
 ```
+
+**Quantify integration metrics**:
+```{r}
+integrationMetrics[["STACAS"]] <- list()
+
+integrationMetrics[["STACAS"]][["batch_LISI"]] <- mean(compute_lisi(object_integrated@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="batch", perplexity = 20)[[1]])
+
+integrationMetrics[["STACAS"]][["celltype_ASW"]] <- mean(compute_silhouette(object_integrated@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="final_annotation")[[1]])
+
+integrationMetrics[["STACAS"]]
+```
+
+
+Compared to the non-corrected data, we observed now 
+i) increase in dataset/batch LISI (i.e. effective number of different batches in a cell neighborhood), indicating a higher mixing
+ii) increase in Silhouette/ASW, indicating that cells with the same annotation (ie of the same kind) were brought into proximity
+
+
+# One-liner STACAS
+
+The previous integration could have been run with a single command:
+```{r, eval=F}
+object_integrated <- Run.STACAS(obj.list, dims = 1:ndim, anchor.features = nfeatures)
+```
+
 
 # STACAS integration guide trees
 
-Just like Seurat, STACAS uses a guide tree to determine integration order.
+Like Seurat, STACAS uses a guide tree to determine integration order.
 Optionally, you can check the integration guide tree automatically generated by STACAS 
-(e.g. are samples from the same technology or from the same study clustered together?)
+(e.g. are samples from the same sequencing technology or from similar tissues clustering together?)
 
 ```{r,collapse=T,message=F,warning=F}
 st1 <- SampleTree.STACAS(
@@ -161,7 +213,7 @@ st1 <- SampleTree.STACAS(
 
 You can tune or manually re-calculate this tree and passed it to `IntegrateData.STACAS`:
 
-STACAS step 2: dataset integration using pre-calculated integration tree
+**STACAS step 2 with pre-calculated integration tree**
 ```{r results=F, warning=F, message=F, eval=F}
 object_integrated <- IntegrateData.STACAS(stacas_anchors, 
                                               dims=1:ndim, 
@@ -179,7 +231,7 @@ When available, cell type annotations can be used to guide the alignment. STACAS
 In this dataset, cells were annotated by the authors of the benchmark. For your own data, you may want to do manual annotation or apply one of several cell annotation tools, such as [SingleR](https://bioconductor.org/packages/release/bioc/html/SingleR.html), [Garnett](https://cole-trapnell-lab.github.io/garnett/) or [scGate](https://github.com/carmonalab/scGate). We will be posting some examples of cell type annotation using `scGate` in a different demo.
 
 
-semi-supervised STACAS step 1: Calculate anchors taking into account cell labels by indicating the corresponding metadata column in `cell.labels` 
+**semi-supervised STACAS step 1:** Calculate anchors taking into account cell labels by indicating the corresponding metadata column in `cell.labels` 
 
 ```{r, warning=F, collapse =T,message =F}
 stacas_anchors_ss <- FindAnchors.STACAS(obj.list,
@@ -200,12 +252,21 @@ st2 <- SampleTree.STACAS(
   )
 ```
 
-semi-supervised STACAS step 2: Integrate the datasets using the labels-informed anchor set, using `semisupervised=TRUE`
+**semi-supervised STACAS step 2:** Integrate the datasets using the labels-informed anchor set, using `semisupervised=TRUE`
 ```{r results=F, warning=F, message=F}
 object_integrated_ss <- IntegrateData.STACAS(stacas_anchors_ss, 
                                              dims=1:ndim,
                                              semisupervised=TRUE)
 ```
+
+
+** One-liner semi-supervised STACAS **
+
+The previous integration could have been run with the single command:
+```{r, eval=F}
+object_integrated_ss <- Run.STACAS(obj.list, dims = 1:ndim, anchor.features = nfeatures, cell.labels = "final_annotation" )
+```
+
 
 Calculate low-dimensional embeddings and see integration results in UMAP space
 ```{r results=F, warning=F, message=F}
@@ -213,50 +274,72 @@ object_integrated_ss <- object_integrated_ss %>% ScaleData() %>% RunPCA(npcs=ndi
 ```
 
 ```{r fig.height=7, fig.width=16}
-p1 <- DimPlot(object_integrated_ss, group.by = "batch") + theme(aspect.ratio = 1) + ggtitle("Semisupervised")
-p2 <- DimPlot(object_integrated_ss, group.by = "final_annotation", label=T, label.size = 2) + theme(aspect.ratio = 1)
+p1_ss <- DimPlot(object_integrated_ss, group.by = "batch") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch after semi-supervised integration")
+p2_ss <- DimPlot(object_integrated_ss, group.by = "final_annotation", label=T, label.size = 2) + theme(aspect.ratio = 1) + ggtitle("Cell labels after semi-supervised integration")
 
-p1 | p2
+p1_ss | p2_ss
+```
+
+
+**Quantify integration metrics**:
+```{r}
+integrationMetrics[["semisupSTACAS"]] <- list()
+
+integrationMetrics[["semisupSTACAS"]][["batch_LISI"]] <- mean(compute_lisi(object_integrated_ss@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="batch", perplexity = 20)[[1]])
+
+integrationMetrics[["semisupSTACAS"]][["celltype_ASW"]] <- mean(compute_silhouette(object_integrated_ss@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="final_annotation")[[1]])
+
+integrationMetrics[["semisupSTACAS"]]
+```
+
+In this case we observe a >20% increase in cell annotation silhouette (celltype_ASW), with a similar dataset/batch mixing (batch_LISI) compared to the unsupervised integration.
+
+
+
+# Summary of Integration Metrics
+
+
+```{r}
+
+integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) %>% tibble::rownames_to_column() %>% rename(value=unlist.integrationMetrics.) %>% separate(rowname, c("Method","Metric"), sep="\\.")
+
+a <- integrationMetricsSummary %>% filter(Metric=="batch_LISI") %>% ggplot(aes(x=Method, y=value, fill=Method)) + geom_bar(stat="identity") + theme(legend.position="none") + ggtitle("batch_LISI")
+
+b <- integrationMetricsSummary %>% filter(Metric=="celltype_ASW") %>% ggplot(aes(x=Method, y=value, fill=Method)) + geom_bar(stat="identity")+ theme(legend.position="none")+ ggtitle("celltype_ASW")
+
+a | b
 ```
 
 
 
-
-## Important notes on data integration
+# Notes on data integration
 
 1. The first critical step in batch effect correction is to ensure that the **gene names in your datasets are harmonized**. If different studies use different naming conventions, synonyms, etc., methods for dimensionality reduction will treat these genes as entirely different variables, and introducing artificial differences between datasets. It is recommended that your pre-processing pipeline takes care of resolving ambiguities in gene naming across datasets. You can use  `STACAS:::standardizeGeneSymbols` but there are other tools such as [HGNChelper](https://cran.r-project.org/web/packages/HGNChelper/index.html)
 
 2. The calculation of highly variable genes (HVG) is a fundamental step for dimensionality reduction and integration. We recommend excluding certain classes of genes, e.g. mitochondrial, ribosomal, heat-shock genes, from the list of HVG, as their expression are typically more strongly associated to technical variation  than to actual biological differences. The `FindVariableGenes.STACAS()` function allows providing a list of genes to exclude from HVG; see an example below.
 
 
-We can use the collection of signatures stored in SignatuR package
-```{r eval=F}
-remotes::install_github("https://github.com/carmonalab/SignatuR")
-```
 
-```{r}
+We can use the collection of signatures stored in [SignatuR package](https://github.com/carmonalab/SignatuR)
+```{r eval=T}
+if (!require("SignatuR", quietly = TRUE))
+    install_github("carmonalab/SignatuR")
+
 library(SignatuR)
 print(SignatuR$Hs)
+
+lapply(GetSignature(SignatuR$Hs),head) # retrieve full list of signatures and display 
 ```
 
-Then we can calculate HVG for STACAS excluding specific gene sets
+Then we tell STACAS to exclude specific genes from HVG used in integration, using the parameter `genesBlockList`
 ```{r warning=F, collapse =T,message =F, eval=F}
-my.genes.blocklist <- c(GetSignature(SignatuR$Hs$Blocklists),
-                        GetSignature(SignatuR$Hs$Programs),
-                        GetSignature(SignatuR$Hs$Compartments))
 
-obj.list <- lapply(obj.list, function(x) {
-    FindVariableFeatures.STACAS(x, nfeat = 2000, genesBlockList = my.genes.blocklist)
+my.genes.blocklist <- c(GetSignature(SignatuR$Hs$Blocklists),GetSignature(SignatuR$Hs$Cell_types,SignatuR$Hs$Compartments))
 
-})
+object_integrated_blockList <- Run.STACAS(obj.list, genesBlockList = my.genes.blocklist, dims = 1:ndim, anchor.features = nfeatures)
 
-anchor.features <- SelectIntegrationFeatures(obj.list, nfeatures = nIntFeatures)
-
-# now provide the list of anchors to FindAnchors.STACAS, instead of using default calculation
-stacas_anchors <- FindAnchors.STACAS(obj.list,
-                                     anchor.features = anchor.features,
-                                     )
 ```
+
 
 # Further reading
 

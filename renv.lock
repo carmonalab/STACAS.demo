@@ -1874,50 +1874,6 @@
         "rlang"
       ]
     },
-<<<<<<< HEAD
-=======
-    "scGate": {
-      "Package": "scGate",
-      "Version": "1.1.1",
-      "Source": "GitHub",
-      "RemoteType": "github",
-      "RemoteHost": "api.github.com",
-      "RemoteRepo": "scGate",
-      "RemoteUsername": "carmonalab",
-      "RemoteRef": "HEAD",
-      "RemoteSha": "35309088f48fd808c0d7eb0ab61650368fb7be6d",
-      "Hash": "c1012172dcecb78b8c31ae93af23faa6",
-      "Requirements": [
-        "Seurat",
-        "UCell",
-        "dplyr",
-        "ggplot2",
-        "ggridges",
-        "patchwork",
-        "reshape2"
-      ]
-    },
-    "scIntegrationMetrics": {
-      "Package": "scIntegrationMetrics",
-      "Version": "0.1",
-      "Source": "GitHub",
-      "RemoteType": "github",
-      "RemoteHost": "api.github.com",
-      "RemoteRepo": "scIntegrationMetrics",
-      "RemoteUsername": "carmonalab",
-      "RemoteRef": "HEAD",
-      "RemoteSha": "b9fa2bda0028d174ec282969e7ffaa801c2c987c",
-      "Hash": "3683b8c3cfc2d63ac7a62bd1418c35d7",
-      "Requirements": [
-        "RANN",
-        "Rcpp",
-        "RcppArmadillo",
-        "cluster",
-        "ggplot2",
-        "vegan"
-      ]
-    },
->>>>>>> master
     "scales": {
       "Package": "scales",
       "Version": "1.2.0",
