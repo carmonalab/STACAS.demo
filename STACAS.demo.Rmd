@@ -100,8 +100,8 @@ How does the collection of datasets look without any integration?
 Run a standard Seurat pipeline for dimensionality reduction
 
 ```{r message=F, warning=F,results=F}
-nfeatures <- 2000
-ndim <- 50
+nfeatures <- 1000
+ndim <- 20
 object <- FindVariableFeatures(object, nfeatures = nfeatures) %>% NormalizeData() %>% ScaleData() %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
 ```
 
@@ -124,10 +124,11 @@ integrationMetrics <- list()
 if (!require("scIntegrationMetrics", quietly = TRUE))
 install_github("carmonalab/scIntegrationMetrics") #calculates LISI and Silhouette
 library(scIntegrationMetrics)
+lisi_perplexity <- 20
 
 integrationMetrics[["uncorrected"]] <- list()
 
-integrationMetrics[["uncorrected"]][["batch_LISI"]] <- mean(compute_lisi(object@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="batch", perplexity = 20)[[1]]) # perplexity=effective number of each cell's neighbors; use lower than default to make it faster
+integrationMetrics[["uncorrected"]][["batch_LISI"]] <- mean(compute_lisi(object@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="batch", perplexity = lisi_perplexity)[[1]]) # perplexity=effective number of each cell's neighbors; use lower than default to make it faster
 
 integrationMetrics[["uncorrected"]][["celltype_ASW"]] <- mean(compute_silhouette(object@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="final_annotation")[[1]])
 
@@ -177,7 +178,7 @@ p1_int | p2_int
 ```{r}
 integrationMetrics[["STACAS"]] <- list()
 
-integrationMetrics[["STACAS"]][["batch_LISI"]] <- mean(compute_lisi(object_integrated@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="batch", perplexity = 20)[[1]])
+integrationMetrics[["STACAS"]][["batch_LISI"]] <- mean(compute_lisi(object_integrated@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="batch", perplexity = lisi_perplexity)[[1]])
 
 integrationMetrics[["STACAS"]][["celltype_ASW"]] <- mean(compute_silhouette(object_integrated@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="final_annotation")[[1]])
 
@@ -256,15 +257,14 @@ p1_ss | p2_ss
 ```{r}
 integrationMetrics[["semisupSTACAS"]] <- list()
 
-integrationMetrics[["semisupSTACAS"]][["batch_LISI"]] <- mean(compute_lisi(object_integrated_ss@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="batch", perplexity = 20)[[1]])
+integrationMetrics[["semisupSTACAS"]][["batch_LISI"]] <- mean(compute_lisi(object_integrated_ss@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="batch", perplexity = lisi_perplexity)[[1]])
 
 integrationMetrics[["semisupSTACAS"]][["celltype_ASW"]] <- mean(compute_silhouette(object_integrated_ss@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="final_annotation")[[1]])
 
 integrationMetrics[["semisupSTACAS"]]
 ```
 
-In this case we observe a >20% increase in cell annotation silhouette (celltype_ASW), with a similar dataset/batch mixing (batch_LISI) compared to the unsupervised integration.
-
+In this case, by using the semi-supervised approach we observe a gain in biological signal conservation, as measured by cell labels silhouette (celltype_ASW), with a similar dataset/batch mixing (batch_LISI) compared to the unsupervised integration.
 
 
 # Summary of Integration Metrics
