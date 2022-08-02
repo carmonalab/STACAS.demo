@@ -456,26 +456,6 @@
         "BiocGenerics"
       ]
     },
-    "STACAS": {
-      "Package": "STACAS",
-      "Version": "2.0.0",
-      "Source": "GitHub",
-      "RemoteType": "github",
-      "RemoteHost": "api.github.com",
-      "RemoteRepo": "STACAS",
-      "RemoteUsername": "carmonalab",
-      "RemoteRef": "HEAD",
-      "RemoteSha": "bc7b8a0fa0b6d71a231a3c5d5da5ce1a631f97f2",
-      "Hash": "0ff158a8a5cccc2bc07d9430ae3ab02d",
-      "Requirements": [
-        "Seurat",
-        "future",
-        "future.apply",
-        "ggplot2",
-        "ggridges",
-        "pbapply"
-      ]
-    },
     "Seurat": {
       "Package": "Seurat",
       "Version": "4.1.1",

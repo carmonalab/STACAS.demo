@@ -34,10 +34,10 @@ renv::restore()
 
 if (!require("remotes", quietly = TRUE))
     install.packages("remotes")
-
 library(remotes)
 
-install_github("carmonalab/STACAS", ref="dev")
+if (!requireNamespace("STACAS", quietly = TRUE))
+  remotes::install_github("carmonalab/STACAS")
 ```
 
 
@@ -195,7 +195,10 @@ ii) increase in Silhouette/ASW, indicating that cells with the same annotation (
 
 The previous integration could have been run from the initial object with a single command:
 ```{r, eval=F}
-object_integrated <- object %>% SplitObject(split.by = "batch") %>% Run.STACAS(dims = 1:ndim, anchor.features = nfeatures) %>% RunUMAP(dims = 1:ndim) 
+object_integrated <- object %>% SplitObject(split.by = "batch") %>%
+      Run.STACAS(dims = 1:ndim, anchor.features = nfeatures) %>%
+      RunUMAP(dims = 1:ndim) 
+
 DimPlot(object_integrated, group.by = "batch")
 ```
 
@@ -276,9 +279,17 @@ install.packages("tidyr")
 
 integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) %>% tibble::rownames_to_column() %>% rename(value=unlist.integrationMetrics.) %>% separate(rowname, c("Method","Metric"), sep="\\.")
 
-a <- integrationMetricsSummary %>% filter(Metric=="batch_LISI") %>% ggplot(aes(x=Method, y=value, fill=Method)) + geom_bar(stat="identity") + theme(legend.position="none") + ggtitle("batch_LISI")
+a <- integrationMetricsSummary %>% filter(Metric=="batch_LISI") %>%
+  ggplot(aes(x=Method, y=value, fill=Method)) + geom_bar(stat="identity") + 
+  ggtitle("batch_LISI") + theme_bw() +
+  theme(legend.position="none", axis.text.x=element_blank())
+  
 
-b <- integrationMetricsSummary %>% filter(Metric=="celltype_ASW") %>% ggplot(aes(x=Method, y=value, fill=Method)) + geom_bar(stat="identity")+ theme(legend.position="none")+ ggtitle("celltype_ASW")
+b <- integrationMetricsSummary %>% filter(Metric=="celltype_ASW") %>%
+  ggplot(aes(x=Method, y=value, fill=Method)) + geom_bar(stat="identity") + 
+  ggtitle("celltype_ASW") + theme_bw() +
+  theme(legend.position="none", axis.text.x=element_blank()) 
+  
 
 a | b
 ```
@@ -301,15 +312,19 @@ if (!require("SignatuR", quietly = TRUE))
 library(SignatuR)
 print(SignatuR$Hs)
 
-lapply(GetSignature(SignatuR$Hs),head) # retrieve full list of signatures and display 
+#Retrieve full list of signautures for human
+hs.sign <- GetSignature(SignatuR$Hs)
 ```
 
 Then we tell STACAS to exclude specific genes from HVG used in integration, using the parameter `genesBlockList`
 ```{r warning=F, collapse =T,message =F, eval=F}
 
-my.genes.blocklist <- c(GetSignature(SignatuR$Hs$Blocklists),GetSignature(SignatuR$Hs$Cell_types,SignatuR$Hs$Compartments))
+my.genes.blocklist <- c(GetSignature(SignatuR$Hs$Blocklists),
+                        GetSignature(SignatuR$Hs$Cell_types,
+                                     SignatuR$Hs$Compartments))
 
-object_integrated_blockList <- Run.STACAS(obj.list, genesBlockList = my.genes.blocklist, dims = 1:ndim, anchor.features = nfeatures)
+object_integrated_blockList <- Run.STACAS(obj.list, genesBlockList = my.genes.blocklist,
+                                          dims = 1:ndim, anchor.features = nfeatures)
 
 ```
 
