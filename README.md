@@ -25,7 +25,3 @@ For installation and documentation on the `STACAS` package refer to the [STACAS 
 ### Citation
 
 Massimo Andreatta, Santiago J Carmona, STACAS: Sub-Type Anchor Correction for Alignment in Seurat to integrate single-cell RNA-seq data, Bioinformatics, 2020, btaa755, https://doi.org/10.1093/bioinformatics/btaa755
-
-<p align="center">
-  <img height="60" src="docs/white.sq.png">
-</p>
