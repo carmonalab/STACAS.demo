@@ -15,7 +15,7 @@ See also how STACAS integration compares to Seurat, and how it avoids overcorrec
 
 Copy this repository to your local system:
 ```
-git clone --depth 1 https://gitlab.unil.ch/carmona/STACAS.demo.git
+git clone https://github.com/carmonalab/STACAS.demo
 ```
 Then move to the `STACAS.demo` folder and open the `STACAS.demo.Rproj` in RStudio. In this enviroment, you can follow step-by-step the commands outlined in `STACAS.demo.Rmd`
 
