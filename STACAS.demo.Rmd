@@ -320,8 +320,7 @@ Then we tell STACAS to exclude specific genes from HVG used in integration, usin
 ```{r warning=F, collapse =T,message =F, eval=F}
 
 my.genes.blocklist <- c(GetSignature(SignatuR$Hs$Blocklists),
-                        GetSignature(SignatuR$Hs$Cell_types,
-                                     SignatuR$Hs$Compartments))
+                        GetSignature(SignatuR$Hs$Compartments))
 
 object_integrated_blockList <- Run.STACAS(obj.list, genesBlockList = my.genes.blocklist,
                                           dims = 1:ndim, anchor.features = nfeatures)
