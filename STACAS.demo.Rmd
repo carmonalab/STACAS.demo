@@ -1,7 +1,7 @@
 ---
 title: "Data integration with STACAS"
 author: "M. Andreatta, A. Berenstein and S. Carmona"
-date: "12/04/2022"
+date: "22/08/2022"
 output:
   rmdformats::readthedown:
     self-contained: true
@@ -288,7 +288,7 @@ a <- integrationMetricsSummary %>% filter(Metric=="batch_LISI") %>%
 b <- integrationMetricsSummary %>% filter(Metric=="celltype_ASW") %>%
   ggplot(aes(x=Method, y=value, fill=Method)) + geom_bar(stat="identity") + 
   ggtitle("celltype_ASW") + theme_bw() +
-  theme(legend.position="none", axis.text.x=element_blank()) 
+  theme(axis.text.x=element_blank()) 
   
 
 a | b
