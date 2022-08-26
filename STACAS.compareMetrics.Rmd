@@ -1,5 +1,5 @@
 ---
-title: "Data integration with STACAS"
+title: "STACAS vs other integration methods on broad immmune cell benchmark dataset"
 author: "M. Andreatta and S. Carmona"
 date: "12/04/2022"
 output:
@@ -89,9 +89,6 @@ if(download){
   url <- "https://figshare.com/ndownloader/files/25717328"
   h5.path <- sprintf("%s/Immune_ALL_human.rds", where)
   download.file(url = url, destfile = h5.path)
-  
-  if (!require("BiocManager", quietly = TRUE))
-    install.packages("BiocManager")
 
   if (!require("zellkonverter", quietly = TRUE))
     install.packages("zellkonverter") # to convert from h5ad to R object
@@ -163,8 +160,11 @@ integrationMetrics[["uncorrected"]]
 Let's repeat the previous task, but using HVGs that are consistently variable across datasets (integrationFeatures)
 We'll split by dataset/batch, calculate HVG for each, then identify shared genes using Seurat's SelectIntegrationFeatures
 
-```{r message=F, warning=F,results=F}
+```{r}
 obj.list <- SplitObject(object, split.by = "batch")
+```
+
+```{r message=F, warning=F,results=F, eval=F}
 
 for (i in 1:length(obj.list)) {
   obj.list[[i]] <- NormalizeData(obj.list[[i]],assay="RNA",normalization.method="LogNormalize")
@@ -173,6 +173,21 @@ for (i in 1:length(obj.list)) {
 
 integrationFeatures <- SelectIntegrationFeatures(obj.list, nfeatures = nfeatures)
 ```
+
+
+Alternatively, calculate HVG excluding specific gene sets using FindVariableFeatures.STACAS function (default STACAS' behaviour)
+```{r warning=F, collapse =T,message =F, eval=T}
+library(SignatuR)
+my.genes.blocklist <- GetSignature(SignatuR$Hs)
+
+for (i in 1:length(obj.list)) {
+  obj.list[[i]] <- NormalizeData(obj.list[[i]],assay="RNA",normalization.method="LogNormalize")
+  obj.list[[i]] <- FindVariableFeatures.STACAS(obj.list[[i]], nfeat=nfeatures*2, genesBlockList = my.genes.blocklist)
+}
+
+integrationFeatures <- SelectIntegrationFeatures(obj.list, nfeatures = nfeatures)
+```
+
 
 Re-calculate dimensionality reduction using integrationFeatures
 ```{r message=F, warning=F,results=F}
@@ -453,19 +468,6 @@ library(SignatuR)
 print(SignatuR$Hs)
 ```
 
-Then we can calculate HVG for STACAS excluding specific gene sets
-```{r warning=F, collapse =T,message =F, eval=F}
-my.genes.blocklist <- c(GetSignature(SignatuR$Hs$Blocklists),
-                        GetSignature(SignatuR$Hs$Programs),
-                        GetSignature(SignatuR$Hs$Compartments))
-
-obj.list <- lapply(obj.list, function(x) {
-    FindVariableFeatures.STACAS(x, nfeat = 2000, genesBlockList = my.genes.blocklist)
-
-})
-
-anchor.features <- SelectIntegrationFeatures(obj.list, nfeatures = nIntFeatures)
-```
 
 # Further reading
 
