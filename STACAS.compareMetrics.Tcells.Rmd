@@ -1,0 +1,455 @@
+---
+title: "STACAS vs other integration methods on heterogeneous T cell datasets"
+author: "M. Andreatta and S. Carmona"
+date: "26/08/2022"
+output:
+  rmdformats::readthedown:
+    self-contained: true
+    highlight: haddock
+    thumbnails: false
+    css: styles.css
+knit: (function(input_file, encoding) {
+  out_dir <- 'docs';
+  rmarkdown::render(input_file, encoding=encoding,
+ output_file=file.path(dirname(input_file), out_dir, 'STACAS.demo.html'))})
+---
+
+# Introduction
+
+Here we will compare integration results of STACAS with other R packages on a collection of scRNA-seq datasets of mouse tumor-infiltrating T cells from multiple studies from [Andreatta et al](https://www.nature.com/articles/s41467-021-23324-4)
+
+The data are available at: [figshare/23136746](https://figshare.com/ndownloader/files/23136746)
+
+Test also https://figshare.com/ndownloader/files/23166794
+
+# R environment
+
+Get and load some useful packages
+```{r message=F, warning=F,results=F, eval=T}
+renv::restore()
+
+if (!require("remotes", quietly = TRUE))
+    install.packages("remotes")
+library(remotes)
+
+if (!requireNamespace("STACAS", quietly = TRUE))
+  remotes::install_github("carmonalab/STACAS")
+
+if (!requireNamespace("harmony", quietly = TRUE))
+  remotes::install_github("immunogenomics/harmony")
+
+if (!requireNamespace("SeuratWrappers", quietly = TRUE))
+remotes::install_github('satijalab/seurat-wrappers')
+
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+if (!require("batchelor", quietly = TRUE))
+BiocManager::install("batchelor")
+
+if (!require("tidyr", quietly = TRUE))
+install.packages("tidyr")
+
+if (!require("scIntegrationMetrics", quietly = TRUE))
+install_github("carmonalab/scIntegrationMetrics") #calculates LISI and Silhouette
+
+```
+
+
+```{r message=F, warning=F,results=F}
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+library(STACAS)
+library(harmony)
+library(SeuratWrappers)
+library(batchelor)
+library(tidyr)
+library(scIntegrationMetrics)
+
+seed = 1234
+set.seed(seed)
+```
+
+
+# Load test datasets
+
+A merged dataset is available as a Seurat object
+```{r}
+download <- T
+where <- 'aux'
+dir.create(where, showWarnings = FALSE)
+
+rds.path <- sprintf("%s/ref_TILAtlas_mouse_v1.rds", where)
+
+if(download){
+
+  options(timeout=500)
+  url <- "https://figshare.com/ndownloader/files/23136746"
+  myPath <- sprintf("%s/ref_TILAtlas_mouse_v1.rds", where)
+  download.file(url = url, destfile = myPath)
+}
+
+object <- readRDS(myPath)
+DefaultAssay(object) <- "RNA"
+```
+
+Annotated subtypes and dataset/study are stored in `functional.cluster` and `Study` metadata column, respectively.
+
+```{r}
+meta.batch <- "Study"
+meta.label <- "functional.cluster"
+```
+
+
+```{r}
+table(object@meta.data[[meta.label]], object@meta.data[[meta.batch]])[,1:5]
+```
+
+
+Set critical parameters
+```{r}
+nfeatures <- 1000 # number of highly variable genes for dimensionality reduction
+ndim <- 20 # number of PCA components for dimensionality reduction 
+lisi_perplexity <- 20 # number of neighbors for LISI (see below for details) to measure batch mixing
+```
+
+
+How does the collection of datasets look without any integration?
+
+Run a standard Seurat pipeline for dimensionality reduction
+
+```{r message=F, warning=F,results=F}
+#object <- NormalizeData(object,normalization.method = "LogNormalize", scale.factor = 10000) # these data are pre-normalized
+object <- FindVariableFeatures(object, nfeatures = nfeatures) %>% ScaleData() %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
+```
+
+```{r fig.height=7, fig.width=16}
+plot.list <- list()
+
+method = "uncorrected"
+
+plot.list[[method]][["batch"]] <- DimPlot(object, group.by = meta.batch) + theme(aspect.ratio = 1) + ggtitle("Dataset/batch before integration")
+plot.list[[method]][["label"]] <- DimPlot(object, group.by = meta.label, label=T, label.size = 4) + theme(aspect.ratio = 1) + ggtitle("Cell labels before integration")
+
+plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
+```
+
+Clusters are largely driven by study/batch of origin rather than subtype
+
+Let's quantify dataset/batch mixing using the [LISI metric](https://github.com/immunogenomics/LISI) from the Raychaudhuri Lab, and conservation of biological information by means of Average Silhouette Width (ASW) of cell labels in the corrected PCA space:
+```{r}
+integrationMetrics <- list()
+
+integrationMetrics[["uncorrected"]] <- list()
+
+integrationMetrics[["uncorrected"]][["batch_LISI"]] <- mean(compute_lisi(object@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity)[[1]]) # perplexity=effective number of each cell's neighbors; use lower than default to make it faster
+
+integrationMetrics[["uncorrected"]][["celltype_ASW"]] <- mean(compute_silhouette(object@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames=meta.label)[[1]])
+
+integrationMetrics[["uncorrected"]]
+
+```
+
+
+Let's repeat the previous task, but using HVGs that are consistently variable across datasets (integrationFeatures)
+We'll split by dataset/batch, calculate HVG for each, then identify shared genes using Seurat's SelectIntegrationFeatures
+
+```{r}
+obj.list <- SplitObject(object, split.by = meta.batch)
+```
+
+```{r message=F, warning=F,results=F, eval=T}
+
+for (i in 1:length(obj.list)) {
+  #obj.list[[i]] <- NormalizeData(obj.list[[i]],assay="RNA",normalization.method="LogNormalize") # these data are already pre-normalized
+  obj.list[[i]] <- FindVariableFeatures(obj.list[[i]], nfeatures=nfeatures*2)
+}
+
+integrationFeatures <- SelectIntegrationFeatures(obj.list, nfeatures = nfeatures)
+```
+
+
+Alternatively, calculate HVG excluding specific gene sets using FindVariableFeatures.STACAS function (default STACAS' behaviour)
+```{r warning=F, collapse =T,message =F, eval=F}
+library(SignatuR)
+my.genes.blocklist <- GetSignature(SignatuR$Hs)
+
+for (i in 1:length(obj.list)) {
+  #obj.list[[i]] <- NormalizeData(obj.list[[i]],assay="RNA",normalization.method="LogNormalize")
+  obj.list[[i]] <- FindVariableFeatures.STACAS(obj.list[[i]], nfeat=nfeatures*2, genesBlockList = my.genes.blocklist)
+}
+
+integrationFeatures <- SelectIntegrationFeatures(obj.list, nfeatures = nfeatures)
+```
+
+
+Re-calculate dimensionality reduction using integrationFeatures
+```{r message=F, warning=F,results=F}
+object@assays$RNA@var.features <- integrationFeatures
+object <- ScaleData(object) %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
+```
+
+```{r fig.height=7, fig.width=16}
+method = "uncorrected_sharedFeatures"
+method.reduction <- "pca"
+
+plot.list[[method]][["batch"]] <- DimPlot(object, group.by = meta.batch) + theme(aspect.ratio = 1) + ggtitle("Dataset/batch before integration, using integration features")
+plot.list[[method]][["label"]] <- DimPlot(object, group.by = meta.label, label=T, label.size = 4) + theme(aspect.ratio = 1) + ggtitle("Cell labels before integration, using integration features")
+
+plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
+```
+
+```{r}
+integrationMetrics[[method]] <- list()
+
+integrationMetrics[[method]][["batch_LISI"]] <- mean(compute_lisi(object@reductions[[method.reduction]]@cell.embeddings, meta_data = object@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity)[[1]]) # perplexity=effective number of each cell's neighbors; use lower than default to make it faster
+
+integrationMetrics[[method]][["celltype_ASW"]] <- mean(compute_silhouette(object@reductions[[method.reduction]]@cell.embeddings, meta_data = object@meta.data, label_colnames=meta.label)[[1]])
+
+integrationMetrics[[method]]
+
+```
+
+
+
+We will now apply STACAS for correcting batch effects.
+
+# STACAS integration
+
+```{r}
+object_integrated_stacas <- Run.STACAS(obj.list, dims = 1:ndim, anchor.features = integrationFeatures) %>%
+      RunUMAP(dims = 1:ndim) 
+```
+
+```{r fig.height=7, fig.width=16}
+method = "STACAS"
+method.reduction <- "pca"
+
+plot.list[[method]][["batch"]] <- DimPlot(object_integrated_stacas, group.by = meta.batch, reduction = "umap") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch - STACAS")
+plot.list[[method]][["label"]] <- DimPlot(object_integrated_stacas, group.by = meta.label, label=T, label.size = 4, reduction = "umap") + theme(aspect.ratio = 1) + ggtitle("Cell labels - STACAS")
+
+plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
+```
+
+```{r}
+integrationMetrics[[method]][["batch_LISI"]] <- mean(compute_lisi(object_integrated_stacas@reductions[[method.reduction]]@cell.embeddings, meta_data = object@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity)[[1]]) # perplexity=effective number of each cell's neighbors; use lower than default to make it faster
+
+integrationMetrics[[method]][["celltype_ASW"]] <- mean(compute_silhouette(object_integrated_stacas@reductions[[method.reduction]]@cell.embeddings, meta_data = object@meta.data, label_colnames=meta.label)[[1]])
+
+integrationMetrics[[method]]
+
+```
+
+
+# Semi-supervised STACAS integration
+
+When available, cell type annotations can be used to guide the alignment. STACAS will use this information to penalize anchors where cell types are inconsistent.
+In this dataset, cells were annotated by the authors of the benchmark. In practice we will partially annotate cells using tools such as [scGate](https://github.com/carmonalab/scGate)
+
+Here we indicate in `cell.labels` the metadata column that contains cell annotations
+```{r, results=F, warning=F, message=F }
+object_integrated_ss <- obj.list %>% Run.STACAS(dims = 1:ndim, anchor.features = integrationFeatures, cell.labels = meta.label)
+```
+
+
+Note that there is no need for ALL cells to be annotated: we recommend to set labels to *NA* or *unknown* for cells that cannot be confidently annotated, and they won't be penalized for label inconsistency. In addition, you can decide how much weight to give to cell labels with the `label.confidence` parameter (from 0 to 1).
+
+Visualize on UMAP space
+```{r results=F, warning=F, message=F}
+object_integrated_ss <- object_integrated_ss %>% RunUMAP(dims=1:ndim)
+```
+
+```{r fig.height=7, fig.width=16}
+method = "semisupSTACAS"
+method.reduction <- "pca"
+
+plot.list[[method]][["batch"]] <- DimPlot(object_integrated_ss, group.by = meta.batch, reduction = "umap") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch - semisupSTACAS")
+plot.list[[method]][["label"]] <- DimPlot(object_integrated_ss, group.by = meta.label, label=T, label.size = 4, reduction = "umap") + theme(aspect.ratio = 1) + ggtitle("Cell labels - semisupSTACAS")
+
+plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
+```
+
+```{r}
+integrationMetrics[[method]][["batch_LISI"]] <- mean(compute_lisi(object_integrated_ss@reductions[[method.reduction]]@cell.embeddings, meta_data = object@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity)[[1]]) 
+
+integrationMetrics[[method]][["celltype_ASW"]] <- mean(compute_silhouette(object_integrated_ss@reductions[[method.reduction]]@cell.embeddings, meta_data = object@meta.data, label_colnames=meta.label)[[1]])
+
+integrationMetrics[[method]]
+
+```
+
+
+Seurat Integration - CCA method
+```{r, results=F, warning=F, message=F, eval=T }
+
+# find anchors
+obj.list.seuratAnchors <- FindIntegrationAnchors(obj.list, anchor.features = integrationFeatures, reduction = "cca", dims = 1:ndim)
+
+# integrate data
+object_integrated_cca <- IntegrateData(anchorset = obj.list.seuratAnchors, dims=1:ndim)
+
+rm(obj.list.seuratAnchors)
+```
+
+Visualize on UMAP space
+```{r results=F, warning=F, message=F, eval=F}
+object_integrated_cca <- object_integrated_cca %>% ScaleData() %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
+```
+
+```{r fig.height=7, fig.width=16}
+method = "SEURAT_cca"
+method.reduction <- "pca"
+
+plot.list[[method]][["batch"]] <- DimPlot(object_integrated_cca, group.by = meta.batch, reduction = "umap") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch - SEURAT_cca")
+plot.list[[method]][["label"]] <- DimPlot(object_integrated_cca, group.by = meta.label, label=T, label.size = 4, reduction = "umap") + theme(aspect.ratio = 1) + ggtitle("Cell labels - SEURAT_cca")
+
+plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
+```
+
+```{r}
+integrationMetrics[[method]][["batch_LISI"]] <- mean(compute_lisi(object_integrated_cca@reductions[[method.reduction]]@cell.embeddings, meta_data = object@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity)[[1]])
+
+integrationMetrics[[method]][["celltype_ASW"]] <- mean(compute_silhouette(object_integrated_cca@reductions[[method.reduction]]@cell.embeddings, meta_data = object@meta.data, label_colnames=meta.label)[[1]])
+
+integrationMetrics[[method]]
+```
+
+
+Seurat Integration - RPCA method
+
+```{r, results=F, warning=F, message=F }
+
+# find anchors
+obj.list.seuratAnchors <- FindIntegrationAnchors(obj.list, anchor.features = integrationFeatures, reduction = "rpca", dims = 1:ndim)
+
+# integrate data
+object_integrated_rpca <- IntegrateData(anchorset = obj.list.seuratAnchors, dims=1:ndim)
+
+rm(obj.list.seuratAnchors)
+```
+
+Visualize on UMAP space
+```{r results=F, warning=F, message=F}
+
+object_integrated_rpca <- object_integrated_rpca %>% ScaleData() %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
+```
+
+```{r fig.height=7, fig.width=16}
+method = "SEURAT_rpca"
+method.reduction <- "pca"
+
+plot.list[[method]][["batch"]] <- DimPlot(object_integrated_rpca, group.by = meta.batch, reduction = "umap") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch - SEURAT_rpca")
+plot.list[[method]][["label"]] <- DimPlot(object_integrated_rpca, group.by = meta.label, label=T, label.size = 4, reduction = "umap") + theme(aspect.ratio = 1) + ggtitle("Cell labels - SEURAT_rpca")
+
+plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
+```
+
+```{r}
+integrationMetrics[[method]][["batch_LISI"]] <- mean(compute_lisi(object_integrated_rpca@reductions[[method.reduction]]@cell.embeddings, meta_data = object@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity)[[1]])
+
+integrationMetrics[[method]][["celltype_ASW"]] <- mean(compute_silhouette(object_integrated_rpca@reductions[[method.reduction]]@cell.embeddings, meta_data = object@meta.data, label_colnames=meta.label)[[1]])
+
+integrationMetrics[[method]]
+```
+
+
+Harmony Integration
+
+#object has already pre-computed `nfeatures` variable genes and `ndim` PCA dimensions
+```{r}
+object_integrated_harmony <- RunHarmony(object, group.by.vars =  meta.batch)
+```
+
+Visualize on UMAP space
+```{r results=F, warning=F, message=F}
+object_integrated_harmony <- RunUMAP(object_integrated_harmony, reduction = "harmony", dims=1:ndim)
+```
+
+```{r fig.height=7, fig.width=16}
+method = "Harmony"
+method.reduction <- "harmony"
+
+plot.list[[method]][["batch"]] <- DimPlot(object_integrated_harmony, group.by = meta.batch, reduction = "umap") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch - Harmony")
+plot.list[[method]][["label"]] <- DimPlot(object_integrated_harmony, group.by = meta.label, label=T, label.size = 4, reduction = "umap") + theme(aspect.ratio = 1) + ggtitle("Cell labels - Harmony")
+
+plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
+```
+
+```{r}
+integrationMetrics[[method]][["batch_LISI"]] <- mean(compute_lisi(object_integrated_harmony@reductions[[method.reduction]]@cell.embeddings, meta_data = object@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity)[[1]])
+
+integrationMetrics[[method]][["celltype_ASW"]] <- mean(compute_silhouette(object_integrated_harmony@reductions[[method.reduction]]@cell.embeddings, meta_data = object@meta.data, label_colnames=meta.label)[[1]])
+
+integrationMetrics[[method]]
+```
+
+FastMNN Integration
+```{r}
+object_integrated_FastMNN <- RunFastMNN(object.list = obj.list, features = integrationFeatures, assay="RNA", d=ndim)
+```
+
+Visualize on UMAP space
+```{r results=F, warning=F, message=F}
+object_integrated_FastMNN <- RunUMAP(object_integrated_FastMNN, reduction = "mnn", dims=1:ndim)
+```
+
+
+```{r fig.height=7, fig.width=16}
+method = "FastMNN"
+method.reduction <- "mnn"
+
+plot.list[[method]][["batch"]] <- DimPlot(object_integrated_FastMNN, group.by = meta.batch, reduction = "umap") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch - FastMNN")
+plot.list[[method]][["label"]] <- DimPlot(object_integrated_FastMNN, group.by = meta.label, label=T, label.size = 4, reduction = "umap") + theme(aspect.ratio = 1) + ggtitle("Cell labels - FastMNN")
+
+plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
+```
+
+```{r}
+integrationMetrics[[method]][["batch_LISI"]] <- mean(compute_lisi(object_integrated_FastMNN@reductions[[method.reduction]]@cell.embeddings, meta_data = object@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity)[[1]])
+
+integrationMetrics[[method]][["celltype_ASW"]] <- mean(compute_silhouette(object_integrated_FastMNN@reductions[[method.reduction]]@cell.embeddings, meta_data = object@meta.data, label_colnames=meta.label)[[1]])
+
+integrationMetrics[[method]]
+```
+
+
+
+# Summary of Integration Metrics
+
+
+```{r}
+integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) %>% tibble::rownames_to_column() %>% rename(value=unlist.integrationMetrics.) %>% separate(rowname, c("Method","Metric"), sep="\\.")
+
+a <- integrationMetricsSummary %>% filter(Metric=="batch_LISI") %>%
+  ggplot(aes(x=reorder(Method,-value), y=value, fill=Method)) + geom_bar(stat="identity") + 
+  ggtitle("batch_LISI") + theme_bw() +
+  theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Method") + ylab("batch LISI")
+  
+
+b <- integrationMetricsSummary %>% filter(Metric=="celltype_ASW") %>%
+  ggplot(aes(x=reorder(Method,-value), y=value, fill=Method)) + geom_bar(stat="identity") + 
+  ggtitle("celltype_ASW") + theme_bw() +
+  theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Method") + ylab("celltype ASW")
+  
+a | b
+```
+
+
+
+
+# Further reading
+
+The STACAS package and installation instructions are available at: [STACAS package](https://github.com/carmonalab/STACAS)
+
+The code for this demo can be found on [GitHub](https://github.com/carmonalab/STACAS.demo)
+
+# References
+
+* Andreatta A., Carmona S. J. (2021). *STACAS: Sub-Type Anchor Correction for Alignment in Seurat to integrate single-cell RNA-seq data.* - Bioinformatics
+
+* Luecken, M. D., Büttner, M., Chaichoompu, K., Danese, A., Interlandi, M., Müller, M. F., ... & Theis, F. J. (2022). *Benchmarking atlas-level data integration in single-cell genomics.* - Nature methods
+
+* Hao, Y., Hao, S., Andersen-Nissen, E., Mauck III, W. M., Zheng, S., Butler, A., ... & Satija, R. (2021). *Integrated analysis of multimodal single-cell data.* - Cell
+
+
