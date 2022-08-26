@@ -48,6 +48,12 @@ if (!require("BiocManager", quietly = TRUE))
 if (!require("batchelor", quietly = TRUE))
 BiocManager::install("batchelor")
 
+if (!require("tidyr", quietly = TRUE))
+install.packages("tidyr")
+
+if (!require("scIntegrationMetrics", quietly = TRUE))
+install_github("carmonalab/scIntegrationMetrics") #calculates LISI and Silhouette
+
 ```
 
 
@@ -59,6 +65,8 @@ library(STACAS)
 library(harmony)
 library(SeuratWrappers)
 library(batchelor)
+library(tidyr)
+library(scIntegrationMetrics)
 
 seed = 1234
 set.seed(seed)
@@ -109,15 +117,21 @@ These are stored in the `final_annotation` metadata column. Study of origin is s
 table(object$final_annotation, object$batch)[,1:5]
 ```
 
+
+Set critical parameters
+```{r}
+nfeatures <- 1000 # number of highly variable genes for dimensionality reduction
+ndim <- 20 # number of PCA components for dimensionality reduction 
+lisi_perplexity <- 20 # number of neighbors for LISI (see below for details) to measure batch mixing
+```
+
+
 How does the collection of datasets look without any integration?
 
 Run a standard Seurat pipeline for dimensionality reduction
 
-
 ```{r message=F, warning=F,results=F}
-nfeatures <- 1000
-ndim <- 20
-object <- FindVariableFeatures(object, nfeatures = nfeatures) %>% NormalizeData() %>% ScaleData() %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
+object <- NormalizeData(object) %>% FindVariableFeatures(nfeatures = nfeatures) %>% ScaleData() %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
 ```
 
 ```{r fig.height=7, fig.width=16}
@@ -133,13 +147,7 @@ Although cells mostly cluster by the cell type (as annotated in individual datas
 
 Let's quantify dataset/batch mixing using the [LISI metric](https://github.com/immunogenomics/LISI) from the Raychaudhuri Lab, and conservation of biological information by means of Average Silhouette Width (ASW) of cell labels in the corrected PCA space:
 ```{r}
-
 integrationMetrics <- list()
-
-if (!require("scIntegrationMetrics", quietly = TRUE))
-install_github("carmonalab/scIntegrationMetrics") #calculates LISI and Silhouette
-library(scIntegrationMetrics)
-lisi_perplexity <- 20
 
 integrationMetrics[["uncorrected"]] <- list()
 
@@ -152,26 +160,63 @@ integrationMetrics[["uncorrected"]]
 ```
 
 
+Let's repeat the previous task, but using HVGs that are consistently variable across datasets (integrationFeatures)
+We'll split by dataset/batch, calculate HVG for each, then identify shared genes using Seurat's SelectIntegrationFeatures
+
+```{r message=F, warning=F,results=F}
+obj.list <- SplitObject(object, split.by = "batch")
+
+for (i in 1:length(obj.list)) {
+  obj.list[[i]] <- NormalizeData(obj.list[[i]],assay="RNA",normalization.method="LogNormalize")
+  obj.list[[i]] <- FindVariableFeatures(obj.list[[i]], nfeatures=nfeatures*2)
+}
+
+integrationFeatures <- SelectIntegrationFeatures(obj.list, nfeatures = nfeatures)
+```
+
+Re-calculate dimensionality reduction using integrationFeatures
+```{r message=F, warning=F,results=F}
+object@assays$RNA@var.features <- integrationFeatures
+object <- ScaleData(object) %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
+```
+
+```{r fig.height=7, fig.width=16}
+p1_pre2 <- DimPlot(object, group.by = "batch") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch before integration, using integration features")
+p2_pre2 <- DimPlot(object, group.by = "final_annotation", label=T, label.size = 4) + theme(aspect.ratio = 1) + ggtitle("Cell labels before integration, using integration features")
+
+
+p1_pre2 | p2_pre2
+```
+
+```{r}
+
+integrationMetrics[["uncorrected_intFeat"]] <- list()
+
+integrationMetrics[["uncorrected_intFeat"]][["batch_LISI"]] <- mean(compute_lisi(object@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="batch", perplexity = lisi_perplexity)[[1]]) # perplexity=effective number of each cell's neighbors; use lower than default to make it faster
+
+integrationMetrics[["uncorrected_intFeat"]][["celltype_ASW"]] <- mean(compute_silhouette(object@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="final_annotation")[[1]])
+
+integrationMetrics[["uncorrected_intFeat"]]
+
+```
+
+
+**Optionally, ignore batch effect-associated gene sets in HVG selection for improved integration  (see Notes)**
+
 
 We will now apply STACAS for correcting batch effects.
 
 # STACAS integration
 
-The previous integration could have been run from the initial object with a single command:
 ```{r}
-
-obj.list <- SplitObject(object, split.by = "batch")
-
-object_integrated <- Run.STACAS(obj.list, dims = 1:ndim, anchor.features = nfeatures) %>%
+object_integrated_stacas <- Run.STACAS(obj.list, dims = 1:ndim, anchor.features = integrationFeatures) %>%
       RunUMAP(dims = 1:ndim) 
-
-DimPlot(object_integrated, group.by = "batch")
 ```
 
 
 ```{r fig.height=7, fig.width=16}
-p1_int <- DimPlot(object_integrated, group.by = "batch") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch after integration")
-p2_int <- DimPlot(object_integrated, group.by = "final_annotation", label=T, label.size = 2) + theme(aspect.ratio = 1) + ggtitle("Cell labels after integration") 
+p1_int <- DimPlot(object_integrated_stacas, group.by = "batch") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch after STACAS integration")
+p2_int <- DimPlot(object_integrated_stacas, group.by = "final_annotation", label=T, label.size = 2) + theme(aspect.ratio = 1) + ggtitle("Cell labels after STACAS integration") 
 
 p1_int | p2_int
 ```
@@ -181,9 +226,9 @@ p1_int | p2_int
 ```{r}
 integrationMetrics[["STACAS"]] <- list()
 
-integrationMetrics[["STACAS"]][["batch_LISI"]] <- mean(compute_lisi(object_integrated@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="batch", perplexity = lisi_perplexity)[[1]])
+integrationMetrics[["STACAS"]][["batch_LISI"]] <- mean(compute_lisi(object_integrated_stacas@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="batch", perplexity = lisi_perplexity)[[1]])
 
-integrationMetrics[["STACAS"]][["celltype_ASW"]] <- mean(compute_silhouette(object_integrated@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="final_annotation")[[1]])
+integrationMetrics[["STACAS"]][["celltype_ASW"]] <- mean(compute_silhouette(object_integrated_stacas@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="final_annotation")[[1]])
 
 integrationMetrics[["STACAS"]]
 ```
@@ -196,7 +241,7 @@ In this dataset, cells were annotated by the authors of the benchmark. In practi
 
 Here we indicate in `cell.labels` the metadata column that contains cell annotations
 ```{r, results=F, warning=F, message=F }
-object_integrated_ss <- obj.list %>% Run.STACAS(dims = 1:ndim, anchor.features = nfeatures, cell.labels = "final_annotation" )
+object_integrated_ss <- obj.list %>% Run.STACAS(dims = 1:ndim, anchor.features = integrationFeatures, cell.labels = "final_annotation" )
 ```
 
 
@@ -208,8 +253,8 @@ object_integrated_ss <- object_integrated_ss %>% RunUMAP(dims=1:ndim)
 ```
 
 ```{r fig.height=7, fig.width=16}
-p1_ss <- DimPlot(object_integrated_ss, group.by = "batch") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch after semi-supervised integration")
-p2_ss <- DimPlot(object_integrated_ss, group.by = "final_annotation", label=T, label.size = 2) + theme(aspect.ratio = 1) + ggtitle("Cell labels after semi-supervised integration")
+p1_ss <- DimPlot(object_integrated_ss, group.by = "batch") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch after semi-supervised STACAS integration")
+p2_ss <- DimPlot(object_integrated_ss, group.by = "final_annotation", label=T, label.size = 2) + theme(aspect.ratio = 1) + ggtitle("Cell labels after semi-supervised STACAS integration")
 
 p1_ss | p2_ss
 ```
@@ -234,7 +279,7 @@ Seurat Integration - CCA method
 ```{r, results=F, warning=F, message=F, eval=F }
 
 # find anchors
-obj.list.seuratAnchors <- FindIntegrationAnchors(obj.list, anchor.features = nfeatures, reduction = "cca", dims = 1:ndim)
+obj.list.seuratAnchors <- FindIntegrationAnchors(obj.list, anchor.features = integrationFeatures, reduction = "cca", dims = 1:ndim)
 
 # integrate data
 object_integrated_cca <- IntegrateData(anchorset = obj.list.seuratAnchors, dims=1:ndim)
@@ -266,13 +311,14 @@ integrationMetrics[["SEURAT_cca"]]
 ```
 
 Seurat Integration - RPCA method
-(we're skippin Seurat's default CCA method because it's very slow and it ranked lower than RPCA in https://theislab.github.io/scib-reproducibility/dataset_immune_cell_hum.html#12_Table)
+(we're skippin Seurat's default CCA method because it's very slow and it ranked lower than RPCA in https://theislab.github.io/scib-reproducibility/dataset_immune_cell_hum.html#12_Table).
+A viable approach might be to use "Atomic sketch" https://satijalab.org/seurat/articles/atomic_integration.html
 
 ```{r, results=F, warning=F, message=F }
 
 # find anchors
-obj.list.seuratAnchors <- FindIntegrationAnchors(obj.list, anchor.features = nfeatures, reduction = "rpca", dims = 1:ndim)
-#obj.list.seuratAnchors <- FindIntegrationAnchors(obj.list, anchor.features = nfeatures, reduction = "cca", dims = 1:ndim)
+obj.list.seuratAnchors <- FindIntegrationAnchors(obj.list, anchor.features = integrationFeatures, reduction = "rpca", dims = 1:ndim)
+#obj.list.seuratAnchors <- FindIntegrationAnchors(obj.list, anchor.features = integrationFeatures, reduction = "cca", dims = 1:ndim)
 
 # integrate data
 object_integrated_rpca <- IntegrateData(anchorset = obj.list.seuratAnchors, dims=1:ndim)
@@ -329,19 +375,41 @@ p1_h | p2_h
 ```{r}
 integrationMetrics[["Harmony"]] <- list()
 
-integrationMetrics[["Harmony"]][["batch_LISI"]] <- mean(compute_lisi(object_integrated_harmony@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="batch", perplexity = lisi_perplexity)[[1]])
+integrationMetrics[["Harmony"]][["batch_LISI"]] <- mean(compute_lisi(object_integrated_harmony@reductions[["harmony"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="batch", perplexity = lisi_perplexity)[[1]])
 
-integrationMetrics[["Harmony"]][["celltype_ASW"]] <- mean(compute_silhouette(object_integrated_harmony@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="final_annotation")[[1]])
+integrationMetrics[["Harmony"]][["celltype_ASW"]] <- mean(compute_silhouette(object_integrated_harmony@reductions[["harmony"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="final_annotation")[[1]])
 
 integrationMetrics[["Harmony"]]
 ```
 
 
-
 FastMNN Integration
-```{r, eval=F}
-anchor.features <- SelectIntegrationFeatures(obj.list, nfeatures = nfeatures)
-object_integrated_FastMNN <- RunFastMNN(obj.list, features = anchor.features, assay="RNA", d=ndims)
+```{r}
+object_integrated_FastMNN <- RunFastMNN(object.list = obj.list, features = integrationFeatures, assay="RNA", d=ndim)
+```
+
+Visualize on UMAP space
+```{r results=F, warning=F, message=F}
+object_integrated_FastMNN <- RunUMAP(object_integrated_FastMNN, reduction = "mnn", dims=1:ndim)
+```
+
+```{r fig.height=7, fig.width=16}
+p1_f <- DimPlot(object_integrated_FastMNN, group.by = "batch") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch after FastMNN integration")
+p2_f <- DimPlot(object_integrated_FastMNN, group.by = "final_annotation", label=T, label.size = 2) + theme(aspect.ratio = 1) + ggtitle("Cell labels after FastMNN integration")
+
+p1_f | p2_f
+```
+
+
+**Quantify integration metrics**:
+```{r}
+integrationMetrics[["FastMNN"]] <- list()
+
+integrationMetrics[["FastMNN"]][["batch_LISI"]] <- mean(compute_lisi(object_integrated_FastMNN@reductions[["mnn"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="batch", perplexity = lisi_perplexity)[[1]])
+
+integrationMetrics[["FastMNN"]][["celltype_ASW"]] <- mean(compute_silhouette(object_integrated_FastMNN@reductions[["mnn"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="final_annotation")[[1]])
+
+integrationMetrics[["FastMNN"]]
 ```
 
 
@@ -351,21 +419,18 @@ object_integrated_FastMNN <- RunFastMNN(obj.list, features = anchor.features, as
 
 
 ```{r}
-if (!require("tidyr", quietly = TRUE))
-install.packages("tidyr")
-
 integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) %>% tibble::rownames_to_column() %>% rename(value=unlist.integrationMetrics.) %>% separate(rowname, c("Method","Metric"), sep="\\.")
 
 a <- integrationMetricsSummary %>% filter(Metric=="batch_LISI") %>%
-  ggplot(aes(x=Method, y=value, fill=Method)) + geom_bar(stat="identity") + 
+  ggplot(aes(x=reorder(Method,-value), y=value, fill=Method)) + geom_bar(stat="identity") + 
   ggtitle("batch_LISI") + theme_bw() +
-  theme(legend.position="none", axis.text.x=element_blank())
+  theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Method") + ylab("batch LISI")
   
 
 b <- integrationMetricsSummary %>% filter(Metric=="celltype_ASW") %>%
-  ggplot(aes(x=Method, y=value, fill=Method)) + geom_bar(stat="identity") + 
+  ggplot(aes(x=reorder(Method,-value), y=value, fill=Method)) + geom_bar(stat="identity") + 
   ggtitle("celltype_ASW") + theme_bw() +
-  theme(axis.text.x=element_blank()) 
+  theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Method") + ylab("celltype ASW")
   
 a | b
 ```
