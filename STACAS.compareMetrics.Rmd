@@ -122,6 +122,9 @@ ndim <- 20 # number of PCA components for dimensionality reduction
 lisi_perplexity <- 20 # number of neighbors for LISI (see below for details) to measure batch mixing
 ```
 
+2000 HVG, 30 PCA dimensions, and lisi_perplexity is the configuration in the benchmark.
+We can use lower valus for faster computation. Results are similar
+
 
 How does the collection of datasets look without any integration?
 
@@ -164,7 +167,7 @@ We'll split by dataset/batch, calculate HVG for each, then identify shared genes
 obj.list <- SplitObject(object, split.by = "batch")
 ```
 
-```{r message=F, warning=F,results=F, eval=F}
+```{r message=F, warning=F,results=F, eval=T}
 
 for (i in 1:length(obj.list)) {
   obj.list[[i]] <- NormalizeData(obj.list[[i]],assay="RNA",normalization.method="LogNormalize")
@@ -174,11 +177,18 @@ for (i in 1:length(obj.list)) {
 integrationFeatures <- SelectIntegrationFeatures(obj.list, nfeatures = nfeatures)
 ```
 
+Alternatively, we can calculate HVG excluding specific gene sets, using `FindVariableFeatures.STACAS` function (default STACAS' behavior).
 
-Alternatively, calculate HVG excluding specific gene sets using FindVariableFeatures.STACAS function (default STACAS' behaviour)
-```{r warning=F, collapse =T,message =F, eval=T}
+NOTE: The calculation of highly variable genes (HVG) is a fundamental step for dimensionality reduction (and for integration based on low dimensional representations). We recommend excluding certain classes of genes, e.g. mitochondrial, ribosomal, heat-shock genes, from the list of variable genes, as their expression may be more related to technical variabilites rather than to cell type identity. Similarly, VDJ genes are highly individual-specific. 
+
+
+```{r warning=F, collapse =T,message =F, eval=F}
+if (!require("SignatuR", quietly = TRUE))
+remotes::install_github("https://github.com/carmonalab/SignatuR")
+
 library(SignatuR)
 my.genes.blocklist <- GetSignature(SignatuR$Hs)
+
 
 for (i in 1:length(obj.list)) {
   obj.list[[i]] <- NormalizeData(obj.list[[i]],assay="RNA",normalization.method="LogNormalize")
@@ -215,8 +225,6 @@ integrationMetrics[["uncorrected_intFeat"]]
 
 ```
 
-
-**Optionally, ignore batch effect-associated gene sets in HVG selection for improved integration  (see Notes)**
 
 
 We will now apply STACAS for correcting batch effects.
@@ -333,7 +341,6 @@ A viable approach might be to use "Atomic sketch" https://satijalab.org/seurat/a
 
 # find anchors
 obj.list.seuratAnchors <- FindIntegrationAnchors(obj.list, anchor.features = integrationFeatures, reduction = "rpca", dims = 1:ndim)
-#obj.list.seuratAnchors <- FindIntegrationAnchors(obj.list, anchor.features = integrationFeatures, reduction = "cca", dims = 1:ndim)
 
 # integrate data
 object_integrated_rpca <- IntegrateData(anchorset = obj.list.seuratAnchors, dims=1:ndim)
@@ -448,25 +455,12 @@ b <- integrationMetricsSummary %>% filter(Metric=="celltype_ASW") %>%
   theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Method") + ylab("celltype ASW")
   
 a | b
+
+ggsave("stacasCompare_LueckenImmune.pdf")
+
+
 ```
 
-
-
-
-
-# Note
-
-The calculation of highly variable genes (HVG) is a fundamental step for dimensionality reduction (and for integration based on low dimensional representations). We recommend excluding certain classes of genes, e.g. mitochondrial, ribosomal, heat-shock genes, from the list of variable genes, as their expression may be more related to technical variabilites rather than to cell type identity. The `FindVariableGenes.STACAS()` function allows providing a list of genes to exclude from HVG; see an example below.
-
-We can use the collection of signatures stored in SignatuR package
-```{r eval=F}
-remotes::install_github("https://github.com/carmonalab/SignatuR")
-```
-
-```{r}
-library(SignatuR)
-print(SignatuR$Hs)
-```
 
 
 # Further reading
