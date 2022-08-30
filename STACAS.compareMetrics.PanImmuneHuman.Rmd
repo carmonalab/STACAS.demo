@@ -210,7 +210,8 @@ compute_lisi_splitByClass <- function(object, method.reduction, meta.batch, meta
   }
   
   names(lisi.list) <- names(object.list)
-  lisi.list <- lisi.list[-which(sapply(lisi.list,is.null))]
+  lisi.list <- lisi.list[!(sapply(lisi.list,is.null))]
+  
   return(lisi.list)
 }
   
