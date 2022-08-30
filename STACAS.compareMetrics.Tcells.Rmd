@@ -11,7 +11,7 @@ output:
 knit: (function(input_file, encoding) {
   out_dir <- 'docs';
   rmarkdown::render(input_file, encoding=encoding,
- output_file=file.path(dirname(input_file), out_dir, 'STACAS.demo.html'))})
+ output_file=file.path(dirname(input_file), out_dir, 'STACAS.compareMethods.TILs.html'))})
 ---
 
 # Introduction
@@ -114,7 +114,7 @@ batchLabels <- round( batchLabels.table / rowSums(batchLabels.table) * 100)
 batchLabels
 thrMaxPerBatch <- 90
 minBatchesPerCellType <- 2
-thrMinPerBatch <- 10
+thrMinPerBatch <- 5
 ```
 
 ```{r}
@@ -130,8 +130,8 @@ metricsLabels <- setdiff(unique(object@meta.data[[meta.label]]),removeLabels)
 Set critical parameters
 ```{r}
 nfeatures <- 2000 # number of highly variable genes for dimensionality reduction
-ndim <- 20 # number of PCA components for dimensionality reduction 
-lisi_perplexity <- 20 # number of neighbors for LISI (see below for details) to measure batch mixing
+ndim <- 30 # number of PCA components for dimensionality reduction 
+lisi_perplexity <- 30 # number of neighbors for LISI (see below for details) to measure batch mixing
 ```
 
 
@@ -176,7 +176,7 @@ integrationMetrics[[method]]
 
 ```
 
-```{r fig.height=4, fig.width=8}
+```{r fig.height=8, fig.width=16}
 plot.list <- list()
 plot.list[[method]][["batch"]] <- DimPlot(metricsObject, group.by = meta.batch, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Dataset/batch", title = method, caption = sprintf("batch_LISI %.2f",integrationMetrics[[method]][["batch_LISI"]]))
 plot.list[[method]][["label"]] <- DimPlot(metricsObject, group.by = meta.label, label=T, label.size = 4, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Cell labels", title = method, caption = sprintf("ASW %.2f; ASW_meanOfMeans %.2f",integrationMetrics[[method]][["celltype_ASW"]],integrationMetrics[[method]][["celltype_ASW_means"]]))
@@ -247,7 +247,7 @@ integrationMetrics[[method]]
 
 ```
 
-```{r fig.height=4, fig.width=8}
+```{r fig.height=8, fig.width=16}
 plot.list[[method]][["batch"]] <- DimPlot(metricsObject, group.by = meta.batch, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Dataset/batch", title = method, caption = sprintf("batch_LISI %.2f",integrationMetrics[[method]][["batch_LISI"]]))
 plot.list[[method]][["label"]] <- DimPlot(metricsObject, group.by = meta.label, label=T, label.size = 4, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Cell labels", title = method, caption = sprintf("ASW %.2f; ASW_meanOfMeans %.2f",integrationMetrics[[method]][["celltype_ASW"]],integrationMetrics[[method]][["celltype_ASW_means"]]))
 
@@ -258,7 +258,7 @@ plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
 
 # STACAS integration
 
-```{r}
+```{r, message=F, warning=F,results=F}
 object_integrated_stacas <- Run.STACAS(obj.list, dims = 1:ndim, anchor.features = hvg) %>%
       RunUMAP(dims = 1:ndim) 
 ```
@@ -284,7 +284,7 @@ integrationMetrics[[method]]
 
 ```
 
-```{r fig.height=4, fig.width=8}
+```{r fig.height=8, fig.width=16}
 plot.list[[method]][["batch"]] <- DimPlot(metricsObject, group.by = meta.batch, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Dataset/batch", title = method, caption = sprintf("batch_LISI %.2f",integrationMetrics[[method]][["batch_LISI"]]))
 plot.list[[method]][["label"]] <- DimPlot(metricsObject, group.by = meta.label, label=T, label.size = 4, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Cell labels", title = method, caption = sprintf("ASW %.2f; ASW_meanOfMeans %.2f",integrationMetrics[[method]][["celltype_ASW"]],integrationMetrics[[method]][["celltype_ASW_means"]]))
 
@@ -333,7 +333,7 @@ integrationMetrics[[method]]
 
 ```
 
-```{r fig.height=4, fig.width=8}
+```{r fig.height=8, fig.width=16}
 plot.list[[method]][["batch"]] <- DimPlot(metricsObject, group.by = meta.batch, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Dataset/batch", title = method, caption = sprintf("batch_LISI %.2f",integrationMetrics[[method]][["batch_LISI"]]))
 plot.list[[method]][["label"]] <- DimPlot(metricsObject, group.by = meta.label, label=T, label.size = 4, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Cell labels", title = method, caption = sprintf("ASW %.2f; ASW_meanOfMeans %.2f",integrationMetrics[[method]][["celltype_ASW"]],integrationMetrics[[method]][["celltype_ASW_means"]]))
 
@@ -343,8 +343,9 @@ plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
 
 
 
-Seurat Integration - CCA method
-```{r, results=F, warning=F, message=F, eval=F}
+# Seurat Integration - CCA method
+
+```{r, results=F, warning=F, message=F, eval=T}
 
 # find anchors
 obj.list.seuratAnchors <- FindIntegrationAnchors(obj.list, anchor.features = hvg, reduction = "cca", dims = 1:ndim)
@@ -356,12 +357,12 @@ rm(obj.list.seuratAnchors)
 ```
 
 Visualize on UMAP space
-```{r results=F, warning=F, message=F, eval=F}
+```{r results=F, warning=F, message=F, eval=T}
 object_integrated_cca <- object_integrated_cca %>% ScaleData() %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
 ```
 
 
-```{r, eval=F}
+```{r, eval=T}
 method = "SEURAT_cca"
 method.reduction <- "pca"
 metricsObject <- object_integrated_cca
@@ -382,7 +383,7 @@ integrationMetrics[[method]]
 
 ```
 
-```{r fig.height=4, fig.width=8, eval=F}
+```{r fig.height=8, fig.width=16, eval=T}
 plot.list[[method]][["batch"]] <- DimPlot(metricsObject, group.by = meta.batch, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Dataset/batch", title = method, caption = sprintf("batch_LISI %.2f",integrationMetrics[[method]][["batch_LISI"]]))
 plot.list[[method]][["label"]] <- DimPlot(metricsObject, group.by = meta.label, label=T, label.size = 4, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Cell labels", title = method, caption = sprintf("ASW %.2f; ASW_meanOfMeans %.2f",integrationMetrics[[method]][["celltype_ASW"]],integrationMetrics[[method]][["celltype_ASW_means"]]))
 
@@ -392,8 +393,7 @@ plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
 
 
 
-
-Seurat Integration - RPCA method
+# Seurat Integration - RPCA method
 
 ```{r, results=F, warning=F, message=F }
 
@@ -433,7 +433,7 @@ integrationMetrics[[method]]
 
 ```
 
-```{r fig.height=4, fig.width=8, eval=T}
+```{r fig.height=8, fig.width=16, eval=T}
 plot.list[[method]][["batch"]] <- DimPlot(metricsObject, group.by = meta.batch, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Dataset/batch", title = method, caption = sprintf("batch_LISI %.2f",integrationMetrics[[method]][["batch_LISI"]]))
 plot.list[[method]][["label"]] <- DimPlot(metricsObject, group.by = meta.label, label=T, label.size = 4, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Cell labels", title = method, caption = sprintf("ASW %.2f; ASW_meanOfMeans %.2f",integrationMetrics[[method]][["celltype_ASW"]],integrationMetrics[[method]][["celltype_ASW_means"]]))
 
@@ -444,11 +444,10 @@ plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
 
 
 
-Harmony Integration
+# Harmony Integration
 
-#object has already pre-computed `nfeatures` variable genes and `ndim` PCA dimensions
-```{r}
-object_integrated_harmony <- RunHarmony(object, group.by.vars =  meta.batch)
+```{r, message=F, warning=F,results=F}
+object_integrated_harmony <- RunHarmony(object, group.by.vars =  meta.batch) 
 ```
 
 Visualize on UMAP space
@@ -478,7 +477,7 @@ integrationMetrics[[method]]
 
 ```
 
-```{r fig.height=4, fig.width=8, eval=T}
+```{r fig.height=8, fig.width=16, eval=T}
 plot.list[[method]][["batch"]] <- DimPlot(metricsObject, group.by = meta.batch, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Dataset/batch", title = method, caption = sprintf("batch_LISI %.2f",integrationMetrics[[method]][["batch_LISI"]]))
 plot.list[[method]][["label"]] <- DimPlot(metricsObject, group.by = meta.label, label=T, label.size = 4, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Cell labels", title = method, caption = sprintf("ASW %.2f; ASW_meanOfMeans %.2f",integrationMetrics[[method]][["celltype_ASW"]],integrationMetrics[[method]][["celltype_ASW_means"]]))
 
@@ -487,8 +486,9 @@ plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
 ```
 
 
-FastMNN Integration
-```{r}
+# FastMNN Integration
+
+```{r, message=F, warning=F,results=F}
 object_integrated_FastMNN <- RunFastMNN(object.list = obj.list, features = hvg, assay="RNA", d=ndim)
 ```
 
@@ -519,7 +519,7 @@ integrationMetrics[[method]]
 
 ```
 
-```{r fig.height=4, fig.width=8, eval=T}
+```{r fig.height=8, fig.width=16, eval=T}
 plot.list[[method]][["batch"]] <- DimPlot(metricsObject, group.by = meta.batch, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Dataset/batch", title = method, caption = sprintf("batch_LISI %.2f",integrationMetrics[[method]][["batch_LISI"]]))
 plot.list[[method]][["label"]] <- DimPlot(metricsObject, group.by = meta.label, label=T, label.size = 4, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Cell labels", title = method, caption = sprintf("ASW %.2f; ASW_meanOfMeans %.2f",integrationMetrics[[method]][["celltype_ASW"]],integrationMetrics[[method]][["celltype_ASW_means"]]))
 
@@ -557,8 +557,10 @@ a | b | c
 
 
 ```{r}
-p <- wrap_plots(lapply(plot.list,wrap_plots))
-ggsave("integration.Tcells.umap.png",p,width = 40, height = 20)
+p <- wrap_plots(lapply(plot.list,wrap_plots),ncol=2)
+p
+ggsave("integration.Tcells.umap.png",p, width = 30, height = 30)
+
 ```
 
 
