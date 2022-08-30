@@ -521,7 +521,7 @@ plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
 
 plots.integrationMetrics <- list()
 
-integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) %>% tibble::rownames_to_column() %>% rename(unlist.integrationMetrics.="value") %>% separate(rowname, c("Method","Metric"), sep="\\.")
+integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) %>% tibble::rownames_to_column() %>% dplyr::rename(value=unlist.integrationMetrics.) %>% separate(rowname, c("Method","Metric"), sep="\\.")
 
 plots.integrationMetrics[[1]] <- integrationMetricsSummary %>% filter(Metric=="batch_LISI") %>%
   ggplot(aes(x=reorder(Method,-value), y=value, fill=Method)) + geom_bar(stat="identity") + 
