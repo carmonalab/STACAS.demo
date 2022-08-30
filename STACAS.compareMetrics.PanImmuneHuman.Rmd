@@ -145,8 +145,8 @@ if (length(removeLabels)>0) sprintf("Removed label: %s",removeLabels)
 Parameters
 ```{r}
 nfeatures <- 2000 # number of highly variable genes for dimensionality reduction
-ndim <- 30 # number of PCA components for dimensionality reduction 
-lisi_perplexity <- 30 # effective number of each cell's neighbors for LISI calculation to measure batch mixing
+ndim <- 20 # number of PCA components for dimensionality reduction 
+lisi_perplexity <- 20 # effective number of each cell's neighbors for LISI calculation to measure batch mixing
 ```
 
 NOTE: In the Luecken's benchamark, 2000 HVG, 30 PCA dimensions (Seurat's default), and LISI perplexity=30 are used ([code](https://github.com/theislab/scib-pipeline/blob/main/scripts/integration/integration.R)).
@@ -172,6 +172,88 @@ object <- FindVariableFeatures(object, nfeatures = nfeatures) %>% ScaleData() %>
 
 
 Let's quantify dataset/batch mixing using the [LISI metric](https://github.com/immunogenomics/LISI) from the Raychaudhuri Lab, and conservation of biological information by means of Average Silhouette Width (ASW) of cell labels in the corrected PCA space:
+
+
+```{r}
+compute_lisi_splitByClass <- function(object, method.reduction, meta.batch, meta.label, labels.use=NULL, minCellPercPerClass=5, ...){
+  
+  object.list <- SplitObject(object, split.by = meta.label)
+  
+  if(!is.null(labels.use)) {  
+    object.list <- object.list[labels.use] 
+  }
+  
+  lisi.list <- list()
+  #message("Percentage of label contributed by batch: ")
+  for ( i in seq_len(length(object.list))){
+    
+    this.class <- names(object.list)[[i]]
+    
+    t <- table(object.list[[i]]@meta.data[[meta.batch]])
+    t.norm <- t/sum(t)*100
+    
+    #message(paste(this.class,round(t.norm,2)," "))
+    
+    batch.use.here <- names(t[t.norm > minCellPercPerClass])
+    
+    message("Effective Nr. batches for ",this.class,":",paste(length(batch.use.here)))
+    
+    if (length(batch.use.here)<2) {
+      message(sprintf("skipping %s not sufficiently represented in more than a single batch",this.class))
+      next
+    }
+    
+    lisi.this <- compute_lisi(object.list[[i]]@reductions[[method.reduction]]@cell.embeddings, meta_data = object.list[[i]]@meta.data, label_colnames=meta.batch, ...)[[1]]
+    lisi.this.normalized <- (lisi.this-1)/(length(batch.use.here)-1)
+    lisi.list[[i]] <- lisi.this.normalized
+    
+  }
+  
+  names(lisi.list) <- names(object.list)
+  lisi.list <- lisi.list[-which(sapply(lisi.list,is.null))]
+  return(lisi.list)
+}
+  
+```
+
+
+```{r}
+getIntegrationMetrics <- function(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction){
+
+integrationMetrics <- list()
+
+metricsLabels_logic <- metricsObject@meta.data[[meta.label]] %in% metricsLabels
+
+lisi.this <- compute_lisi(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity)[[1]]
+
+lisi.this.normalized <- (lisi.this-1)/(length(metricsLabels)-1)
+
+#integrationMetrics[["batch_LISI"]] <- mean(lisi.this[metricsLabels_logic]) 
+#integrationMetrics[["batch_LISI_means"]] <- mean(tapply(lisi.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
+
+integrationMetrics[["batch_LISI"]] <- mean(lisi.this.normalized[metricsLabels_logic]) 
+integrationMetrics[["batch_LISI_means"]] <- mean(tapply(lisi.this.normalized,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
+
+lisi_splitByClass <- compute_lisi_splitByClass(metricsObject, method.reduction = method.reduction, meta.label = meta.label, meta.batch = meta.batch, perplexity=lisi_perplexity)
+
+integrationMetrics[["batch_LISI_perCellType"]] <- mean(unlist(lisi_splitByClass))
+
+classMeans <- round(sapply(lisi_splitByClass,mean),2)
+
+message(paste(names(lisi_splitByClass),classMeans," "))
+
+integrationMetrics[["batch_LISI_perCellType_means"]] <- mean(classMeans)
+
+sil.this <- compute_silhouette(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.label)[[1]]
+
+integrationMetrics[["celltype_ASW"]] <- mean(sil.this[metricsLabels_logic])
+integrationMetrics[["celltype_ASW_means"]] <- mean(tapply(sil.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
+
+integrationMetrics
+
+}
+```
+
 ```{r}
 integrationMetrics <- list()
 
@@ -179,21 +261,9 @@ method = "uncorrected"
 method.reduction <- "pca"
 metricsObject <- object
 
-metricsLabels_logic <- metricsObject@meta.data[[meta.label]] %in% metricsLabels
-
-lisi.this <- compute_lisi(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity)[[1]]
-
-integrationMetrics[[method]][["batch_LISI"]] <- mean(lisi.this[metricsLabels_logic]) 
-integrationMetrics[[method]][["batch_LISI_means"]] <- mean(tapply(lisi.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
-
-sil.this <- compute_silhouette(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.label)[[1]]
-
-integrationMetrics[[method]][["celltype_ASW"]] <- mean(sil.this[metricsLabels_logic])
-integrationMetrics[[method]][["celltype_ASW_means"]] <- mean(tapply(sil.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
-
-integrationMetrics[[method]]
-
+integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
 ```
+
 
 ```{r fig.height=8, fig.width=16}
 plot.list <- list()
@@ -253,19 +323,8 @@ method = "uncorrected_sharedFeatures"
 method.reduction <- "pca"
 metricsObject <- object
 
-metricsLabels_logic <- metricsObject@meta.data[[meta.label]] %in% metricsLabels
+integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
 
-lisi.this <- compute_lisi(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity)[[1]]
-
-integrationMetrics[[method]][["batch_LISI"]] <- mean(lisi.this[metricsLabels_logic]) 
-integrationMetrics[[method]][["batch_LISI_means"]] <- mean(tapply(lisi.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
-
-sil.this <- compute_silhouette(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.label)[[1]]
-
-integrationMetrics[[method]][["celltype_ASW"]] <- mean(sil.this[metricsLabels_logic])
-integrationMetrics[[method]][["celltype_ASW_means"]] <- mean(tapply(sil.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
-
-integrationMetrics[[method]]
 
 ```
 
@@ -291,19 +350,8 @@ method = "STACAS"
 method.reduction <- "pca"
 metricsObject <- object_integrated_stacas
 
-metricsLabels_logic <- metricsObject@meta.data[[meta.label]] %in% metricsLabels
+integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
 
-lisi.this <- compute_lisi(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity)[[1]]
-
-integrationMetrics[[method]][["batch_LISI"]] <- mean(lisi.this[metricsLabels_logic]) 
-integrationMetrics[[method]][["batch_LISI_means"]] <- mean(tapply(lisi.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
-
-sil.this <- compute_silhouette(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.label)[[1]]
-
-integrationMetrics[[method]][["celltype_ASW"]] <- mean(sil.this[metricsLabels_logic])
-integrationMetrics[[method]][["celltype_ASW_means"]] <- mean(tapply(sil.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
-
-integrationMetrics[[method]]
 
 ```
 
@@ -342,19 +390,7 @@ method = "semisupSTACAS"
 method.reduction <- "pca"
 metricsObject <- object_integrated_ss
 
-metricsLabels_logic <- metricsObject@meta.data[[meta.label]] %in% metricsLabels
-
-lisi.this <- compute_lisi(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity)[[1]]
-
-integrationMetrics[[method]][["batch_LISI"]] <- mean(lisi.this[metricsLabels_logic]) 
-integrationMetrics[[method]][["batch_LISI_means"]] <- mean(tapply(lisi.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
-
-sil.this <- compute_silhouette(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.label)[[1]]
-
-integrationMetrics[[method]][["celltype_ASW"]] <- mean(sil.this[metricsLabels_logic])
-integrationMetrics[[method]][["celltype_ASW_means"]] <- mean(tapply(sil.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
-
-integrationMetrics[[method]]
+integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
 
 ```
 
@@ -392,19 +428,8 @@ method = "SEURAT_cca"
 method.reduction <- "pca"
 metricsObject <- object_integrated_cca
 
-metricsLabels_logic <- metricsObject@meta.data[[meta.label]] %in% metricsLabels
+integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
 
-lisi.this <- compute_lisi(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity)[[1]]
-
-integrationMetrics[[method]][["batch_LISI"]] <- mean(lisi.this[metricsLabels_logic]) 
-integrationMetrics[[method]][["batch_LISI_means"]] <- mean(tapply(lisi.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
-
-sil.this <- compute_silhouette(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.label)[[1]]
-
-integrationMetrics[[method]][["celltype_ASW"]] <- mean(sil.this[metricsLabels_logic])
-integrationMetrics[[method]][["celltype_ASW_means"]] <- mean(tapply(sil.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
-
-integrationMetrics[[method]]
 
 ```
 
@@ -442,19 +467,8 @@ method = "SEURAT_rpca"
 method.reduction <- "pca"
 metricsObject <- object_integrated_rpca
 
-metricsLabels_logic <- metricsObject@meta.data[[meta.label]] %in% metricsLabels
+integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
 
-lisi.this <- compute_lisi(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity)[[1]]
-
-integrationMetrics[[method]][["batch_LISI"]] <- mean(lisi.this[metricsLabels_logic]) 
-integrationMetrics[[method]][["batch_LISI_means"]] <- mean(tapply(lisi.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
-
-sil.this <- compute_silhouette(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.label)[[1]]
-
-integrationMetrics[[method]][["celltype_ASW"]] <- mean(sil.this[metricsLabels_logic])
-integrationMetrics[[method]][["celltype_ASW_means"]] <- mean(tapply(sil.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
-
-integrationMetrics[[method]]
 
 ```
 
@@ -485,19 +499,8 @@ method = "Harmony"
 method.reduction <- "harmony"
 metricsObject <- object_integrated_harmony
 
-metricsLabels_logic <- metricsObject@meta.data[[meta.label]] %in% metricsLabels
+integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
 
-lisi.this <- compute_lisi(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity)[[1]]
-
-integrationMetrics[[method]][["batch_LISI"]] <- mean(lisi.this[metricsLabels_logic]) 
-integrationMetrics[[method]][["batch_LISI_means"]] <- mean(tapply(lisi.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
-
-sil.this <- compute_silhouette(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.label)[[1]]
-
-integrationMetrics[[method]][["celltype_ASW"]] <- mean(sil.this[metricsLabels_logic])
-integrationMetrics[[method]][["celltype_ASW_means"]] <- mean(tapply(sil.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
-
-integrationMetrics[[method]]
 
 ```
 
@@ -527,19 +530,8 @@ method = "FastMNN"
 method.reduction <- "mnn"
 metricsObject <- object_integrated_FastMNN
 
-metricsLabels_logic <- metricsObject@meta.data[[meta.label]] %in% metricsLabels
+integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
 
-lisi.this <- compute_lisi(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity)[[1]]
-
-integrationMetrics[[method]][["batch_LISI"]] <- mean(lisi.this[metricsLabels_logic]) 
-integrationMetrics[[method]][["batch_LISI_means"]] <- mean(tapply(lisi.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
-
-sil.this <- compute_silhouette(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.label)[[1]]
-
-integrationMetrics[[method]][["celltype_ASW"]] <- mean(sil.this[metricsLabels_logic])
-integrationMetrics[[method]][["celltype_ASW_means"]] <- mean(tapply(sil.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
-
-integrationMetrics[[method]]
 
 ```
 
@@ -555,28 +547,37 @@ plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
 # Summary of Integration Metrics
 
 
-```{r}
+```{r, fig.height=10, fig.width=10}
+plots.integrationMetrics <- list()
+
 integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) %>% tibble::rownames_to_column() %>% rename(value=unlist.integrationMetrics.) %>% separate(rowname, c("Method","Metric"), sep="\\.")
 
-a <- integrationMetricsSummary %>% filter(Metric=="batch_LISI") %>%
+plots.integrationMetrics[[1]] <- integrationMetricsSummary %>% filter(Metric=="batch_LISI") %>%
   ggplot(aes(x=reorder(Method,-value), y=value, fill=Method)) + geom_bar(stat="identity") + 
   ggtitle("batch_LISI") + theme_bw() +
   theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Method") + ylab("batch LISI")
   
+plots.integrationMetrics[[2]] <- integrationMetricsSummary %>% filter(Metric=="batch_LISI_perCellType") %>%
+  ggplot(aes(x=reorder(Method,-value), y=value, fill=Method)) + geom_bar(stat="identity") + 
+  ggtitle("batch_LISI_perCellType") + theme_bw() +
+  theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Method") + ylab("batch LISI per CellType")
 
-b <- integrationMetricsSummary %>% filter(Metric=="celltype_ASW") %>%
+plots.integrationMetrics[[3]] <- integrationMetricsSummary %>% filter(Metric=="batch_LISI_perCellType_means") %>%
+  ggplot(aes(x=reorder(Method,-value), y=value, fill=Method)) + geom_bar(stat="identity") + 
+  ggtitle("batch_LISI_perCellType_means") + theme_bw() +
+  theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Method") + ylab("batch LISI per CellType mean of means")
+
+plots.integrationMetrics[[4]] <- integrationMetricsSummary %>% filter(Metric=="celltype_ASW") %>%
   ggplot(aes(x=reorder(Method,-value), y=value, fill=Method)) + geom_bar(stat="identity") + 
   ggtitle("celltype_ASW") + theme_bw() +
   theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Method") + ylab("celltype ASW")
-
- 
-c <- integrationMetricsSummary %>% filter(Metric=="celltype_ASW_means") %>%
+  
+plots.integrationMetrics[[5]] <- integrationMetricsSummary %>% filter(Metric=="celltype_ASW_means") %>%
   ggplot(aes(x=reorder(Method,-value), y=value, fill=Method)) + geom_bar(stat="identity") + 
   ggtitle("celltype_ASW_means") + theme_bw() +
-  theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Method") + ylab("celltype ASW")
+  theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Method") + ylab("celltype silhouette mean of means")
 
-
-a | b | c
+wrap_plots(plots.integrationMetrics)
 ```
 
 
