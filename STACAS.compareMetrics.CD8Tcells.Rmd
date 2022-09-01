@@ -568,9 +568,10 @@ The code for this demo can be found on [GitHub](https://github.com/carmonalab/ST
 
 # References
 
-* Andreatta A., Carmona S. J. (2021). *STACAS: Sub-Type Anchor Correction for Alignment in Seurat to integrate single-cell RNA-seq data.* - Bioinformatics
 
-* Luecken, M. D., Büttner, M., Chaichoompu, K., Danese, A., Interlandi, M., Müller, M. F., ... & Theis, F. J. (2022). *Benchmarking atlas-level data integration in single-cell genomics.* - Nature methods
+Add references for all methods
+
+* Andreatta A., Carmona S. J. (2021). *STACAS: Sub-Type Anchor Correction for Alignment in Seurat to integrate single-cell RNA-seq data.* - Bioinformatics
 
 * Hao, Y., Hao, S., Andersen-Nissen, E., Mauck III, W. M., Zheng, S., Butler, A., ... & Satija, R. (2021). *Integrated analysis of multimodal single-cell data.* - Cell
 
