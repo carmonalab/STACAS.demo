@@ -75,7 +75,7 @@ set.seed(seed)
 
 A merged dataset is available as a Seurat object
 ```{r}
-download <- T
+download <- F
 where <- 'aux'
 dir.create(where, showWarnings = FALSE)
 
@@ -169,11 +169,13 @@ compute_lisi_splitByClass <- function(object, method.reduction, meta.batch, meta
     t <- table(object.list[[i]]@meta.data[[meta.batch]])
     t.norm <- t/sum(t)*100
     
+    batchNum <- length(t)
+    cellPerBatchEqual <- 100/batchNum
     #message(paste(this.class,round(t.norm,2)," "))
     
-    batch.use.here <- names(t[t.norm > minCellPercPerClass])
+    batch.use.here <- names(t[t.norm > min(minCellPercPerClass,cellPerBatchEqual)]) # which batches contribute with at least `minCellPercPerClass` or the expected number of cells if all batches were of same size?
     
-    message("Effective Nr. batches for ",this.class,":",paste(length(batch.use.here)))
+    message("Nr. batches for ",this.class,":",paste(length(batch.use.here)))
     
     if (length(batch.use.here)<2) {
       message(sprintf("skipping %s not sufficiently represented in more than a single batch",this.class))

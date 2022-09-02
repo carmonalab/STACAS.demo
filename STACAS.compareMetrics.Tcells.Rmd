@@ -175,8 +175,8 @@ compute_lisi_splitByClass <- function(object, method.reduction, meta.batch, meta
     
     batch.use.here <- names(t[t.norm > minCellPercPerClass])
     
-    message("Effective Nr. batches for ",this.class,":",paste(length(batch.use.here)))
-    
+    message("Nr. batches for ",this.class,":",paste(length(batch.use.here)))
+
     if (length(batch.use.here)<2) {
       message(sprintf("skipping %s not sufficiently represented in more than a single batch",this.class))
       next
