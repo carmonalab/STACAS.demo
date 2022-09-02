@@ -16,9 +16,15 @@ knit: (function(input_file, encoding) {
 
 # Introduction
 
-Here we will compare integration results of STACAS with other R packages on a collection of scRNA-seq datasets of immune cells from multiple donors, human tissues and studies, assembled by [Luecken et al.](https://www.nature.com/articles/s41592-021-01336-8) 
+Here we compare integration results of STACAS with other R packages on a collection of scRNA-seq datasets of immune cells from multiple donors, human tissues and studies, assembled by [Luecken et al.](https://www.nature.com/articles/s41592-021-01336-8) 
 
-Here we compare vs Seurat v3 RPCA (upon which STACAS builds), the fast [HARMONY](https://github.com/immunogenomics/harmony), and [FastMNN](https://bioconductor.org/packages/release/bioc/html/batchelor.html) that ranked first (together with Python's Scanorama) for this task in the excellent benchmark by [Luecken et al.](https://theislab.github.io/scib-reproducibility/dataset_immune_cell_hum.html#12_Table).
+This comparison includes Seurat v3 (RPCA and CCA modes), [HARMONY](https://github.com/immunogenomics/harmony), and [FastMNN](https://bioconductor.org/packages/release/bioc/html/batchelor.html) that ranked first (together with Python's Scanorama) for this task in the excellent benchmark by [Luecken et al.](https://theislab.github.io/scib-reproducibility/dataset_immune_cell_hum.html#12_Table).
+
+To evaluate integration quality we use different metrics that consider two aspects of integration: i) batch mixing of cells, and ii) conservation of biological variance of cell identity.
+For i) because batch-mixing of cells of different type is not desirable, we include a variation of LISI ("per celltype iLISI" or ciLISI) to consider only cells of the same cell type at a time.
+For ii) we use the average silhouette width (AWS; aka silhouette coefficient) of the corrected PCA space, that measures the relationship between the within-cluster (i.e. intra-celltype) distances of a cell and the between-cluster (i.e. inter-celltype) distances of that cell to the closest cluster/cell type.
+
+The metrics are evaluated in the integrated data using different methods, and in the combined data without integration/batch correction.
 
 The data are available at: [figshare/12420968](https://figshare.com/articles/dataset/Benchmarking_atlas-level_data_integration_in_single-cell_genomics_-_integration_task_datasets_Immune_and_pancreas_/12420968)
 
@@ -171,7 +177,7 @@ object <- FindVariableFeatures(object, nfeatures = nfeatures) %>% ScaleData() %>
 ```
 
 
-Let's quantify dataset/batch mixing using the [LISI metric](https://github.com/immunogenomics/LISI) from the Raychaudhuri Lab, and conservation of biological information by means of Average Silhouette Width (ASW) of cell labels in the corrected PCA space:
+Let's quantify dataset/batch mixing using the [LISI metric](https://github.com/immunogenomics/LISI) and conservation of biological information by means of Average Silhouette Width (ASW) of cell labels in the corrected PCA space:
 
 
 ```{r}
