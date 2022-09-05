@@ -40,9 +40,11 @@ install_github("carmonalab/scIntegrationMetrics") #calculates LISI and Silhouett
 if (!requireNamespace("BiocManager"))
     install.packages("BiocManager")
 
-BiocManager::install("CellMixS")
+if (!requireNamespace("CellMixS"))
+  BiocManager::install("CellMixS")
 
-BiocManager::install("splatter")
+if (!requireNamespace("CellMixS"))
+  BiocManager::install("splatter")
 
 ```
 
@@ -55,6 +57,7 @@ library(scIntegrationMetrics)
 library(patchwork)
 library(CellMixS)
 library(splatter)
+library(Seurat)
 
 seed = 1234
 set.seed(seed)
@@ -71,49 +74,73 @@ suppressPackageStartupMessages({
 })
 ```
 
-
-
 Prepare extreme heterogeneous datasets (batch effects + different subtype composition) to evaluate metrics
 
 ```{r}
+
+simulateAndMeasure <- function(ncellsTotal,freqBatch1,de.facLoc=0.2, de.facScale=0.2, batch.facScale=0, batch.facLoc=0, mySeed=123){
+  
+ncellsBatch1 <- freqBatch1*ncellsTotal
+ncellsBatch2 <- (ncellsTotal-ncellsBatch1)/2
+
+set.seed(mySeed)
+
+test <- splatSimulate(batchCells = c(ncellsBatch1, ncellsBatch2*2, ncellsBatch2*2), group.prob = c(0.5, 0.5), 
+                            method = "groups", verbose = FALSE, de.facLoc=de.facLoc, de.facScale=de.facScale, batch.facScale= batch.facScale, batch.facLoc=batch.facLoc ) # see ?SplatParams  de.facLoc=0.2, de.facScale=0.2
+
+test <- test[,!(test$Batch=="Batch2" & test$Group=="Group1")]
+test <-  test[,!(test$Batch=="Batch3" & test$Group=="Group2")]
+print(table(test$Group,test$Batch))
+test <- logNormCounts(test)
+test <- runPCA(test, ncomponents = 2, ntop=500)
+test <- evalIntegration(test, metrics = c("isi", "cms","mixingMetric","entropy"), group = "Batch", k = 20, n_dim = 2, cell_min = 5, weight = F)
+
+return(test)
+}
+
+```
+
+
+```{r}
+plotSimul <- function(test){
+plotPCA(test, shape_by = "Group", colour_by = "Batch") + ggtitle(sprintf("cms %.2f; lisi %.2f; mixingMetric %.2f; entropy %.2f",mean(test$cms_smooth),mean(test$isi),mean(test$mm),mean(test$entropy))) | plotPCA(test, shape_by = "Batch", colour_by = "Group")
+}
+
+```
+
+```{r}
 test.list <- list()
-mySeed <- 123
+test.list[["batchStrong_balanced"]] <- simulateAndMeasure(ncellsTotal = 1000,freqBatch1 = .33, batch.facScale = 0.1, batch.facLoc = 0.1)
+plotSimul(test.list[["batchStrong_balanced"]])
+```
 
-ncellsBatchBig <- 500
-ncellsBatchSmall <- ncellsBatchBig/2 
 
-set.seed(mySeed)
-
-test <- splatSimulate(batchCells = c(ncellsBatchBig, ncellsBatchSmall*2, ncellsBatchSmall*2), group.prob = c(0.5, 0.5), 
-                            method = "groups", verbose = FALSE, batch.facScale= 0.1, batch.facLoc=0.1 ) # see ?SplatParams  de.facLoc=0.2, de.facScale=0.2
-test <- test[,!(test$Batch=="Batch2" & test$Group=="Group1")]
-test <-  test[,!(test$Batch=="Batch3" & test$Group=="Group2")]
-table(test$Group,test$Batch)
-test <- logNormCounts(test)
-test <- runPCA(test, ncomponents = 2, ntop=500)
-test <- evalIntegration(test, metrics = c("isi", "cms"), group = "Batch", k = 20, n_dim = 2, cell_min = 5, weight = F)
-plotPCA(test, shape_by = "Group", colour_by = "Batch") + ggtitle(sprintf("cms %.2f; lisi %.2f",mean(test$cms_smooth),mean(test$isi)))
-
-test.list[["batch20_balanced"]] <- test
+```{r}
+test.list[["batchMild_balanced"]] <- simulateAndMeasure(ncellsTotal = 1000,freqBatch1 = .33, batch.facScale = 0.05, batch.facLoc = 0.05)
+plotSimul(test.list[["batchMild_balanced"]])
 ```
 
 ```{r}
-ncellsBatchBig <- 500
-ncellsBatchSmall <- ncellsBatchBig/2 
+test.list[["batch0_balanced"]] <- simulateAndMeasure(ncellsTotal = 1000,freqBatch1 = .33, batch.facScale = 0, batch.facLoc = 0)
+plotSimul(test.list[["batch0_balanced"]])
+```
 
-set.seed(mySeed)
+```{r}
+test.list[["batch0_unbalanced"]] <- simulateAndMeasure(ncellsTotal = 1000,freqBatch1 = .33/2, batch.facScale = 0, batch.facLoc = 0)
+plotSimul(test.list[["batch0_unbalanced"]])
+```
 
-test <- splatSimulate(batchCells = c(ncellsBatchBig, ncellsBatchSmall*2, ncellsBatchSmall*2), group.prob = c(0.5, 0.5), 
-                            method = "groups", verbose = FALSE, batch.facScale= 0, batch.facLoc=0 ) # see ?SplatParams  de.facLoc=0.2, de.facScale=0.2
-test <- test[,!(test$Batch=="Batch2" & test$Group=="Group1")]
-test <-  test[,!(test$Batch=="Batch3" & test$Group=="Group2")]
-table(test$Group,test$Batch)
-test <- logNormCounts(test)
-test <- runPCA(test, ncomponents = 2, ntop=500)
-test <- evalIntegration(test, metrics = c("isi", "cms"), group = "Batch", k = 20, n_dim = 2, cell_min = 5, weight = F)
-plotPCA(test, shape_by = "Group", colour_by = "Batch") + ggtitle(sprintf("cms %.2f; lisi %.2f",mean(test$cms_smooth),mean(test$isi)))
 
-test.list[["batch0_balanced"]] <- test
+
+```{r}
+test.list[["batch0_unbalanced"]] <- simulateAndMeasure(ncellsTotal = 1000,freqBatch1 = .33/2, batch.facScale = 0, batch.facLoc = 0)
+plotSimul(test.list[["batch0_unbalanced"]])
+```
+
+
+```{r}
+test.list[["overcorrected_balanced"]] <- simulateAndMeasure(ncellsTotal = 1000,freqBatch1 = .33/2, batch.facScale = 0, batch.facLoc = 0, de.facLoc = 0, de.facScale = 0)
+plotSimul(test.list[["overcorrected_balanced"]])
 ```
 
 
@@ -121,76 +148,33 @@ test.list[["batch0_balanced"]] <- test
 
 ```{r}
 
-ncellsBatchBig <- 500
-ncellsBatchSmall <- ncellsBatchBig/2 
-
-set.seed(mySeed)
-
-test <- splatSimulate(batchCells = c(ncellsBatchBig, ncellsBatchSmall*2, ncellsBatchSmall*2), group.prob = c(0.5, 0.5), 
-                            method = "groups", verbose = FALSE, de.facLoc=0, de.facScale=0, batch.facScale= 0, batch.facLoc=0 ) # see ?SplatParams  de.facLoc=0.2, de.facScale=0.2
-test <- test[,!(test$Batch=="Batch2" & test$Group=="Group1")]
-test <-  test[,!(test$Batch=="Batch3" & test$Group=="Group2")]
-table(test$Group,test$Batch)
-test <- logNormCounts(test)
-test <- runPCA(test, ncomponents = 2, ntop=500)
-#plotPCA(test, shape_by = "Group", colour_by = "Batch") 
-test <- evalIntegration(test, metrics = c("isi", "cms"), group = "Batch", k = 20, n_dim = 2, cell_min = 5, weight = F)
-plotPCA(test, shape_by = "Group", colour_by = "Batch") + ggtitle(sprintf("cms %.2f; lisi %.2f",mean(test$cms_smooth),mean(test$isi)))
-
-test.list[["overcorrected_balanced"]] <- test
-
-```
-
-
-```{r}
-ncellsBatchBig <- 800
-ncellsBatchSmall <- 100
-
-set.seed(mySeed)
-
-test <- splatSimulate(batchCells = c(ncellsBatchBig, ncellsBatchSmall*2, ncellsBatchSmall*2), group.prob = c(0.5, 0.5), 
-                            method = "groups", verbose = FALSE, batch.facScale= 0, batch.facLoc=0 ) # see ?SplatParams  de.facLoc=0.2, de.facScale=0.2
-test <- test[,!(test$Batch=="Batch2" & test$Group=="Group1")]
-test <-  test[,!(test$Batch=="Batch3" & test$Group=="Group2")]
-table(test$Group,test$Batch)
-test <- logNormCounts(test)
-test <- runPCA(test, ncomponents = 2, ntop=500)
-#plotPCA(test, shape_by = "Group", colour_by = "Batch") 
-test <- evalIntegration(test, metrics = c("isi", "cms"), group = "Batch", k = 20, n_dim = 2, cell_min = 5, weight = F)
-plotPCA(test, shape_by = "Group", colour_by = "Batch") + ggtitle(sprintf("cms %.2f; lisi %.2f",mean(test$cms_smooth),mean(test$isi)))
-
-test.list[["batch0_unbalanced"]] <- test
-
-```
-
-```{r}
-
-lapply(test.list,function(test){
-  plotPCA(test, shape_by = "Group", colour_by = "Batch") + ggtitle(sprintf("cms %.2f; lisi %.2f",mean(test$cms_smooth),mean(test$isi))) | visHist(test,metric = c("cms"))
+lapply(names(test.list),function(name){
+  plotSimul(test.list[[name]]) & labs(caption =name)
+  #plotPCA(test, shape_by = "Group", colour_by = "Batch") + ggtitle(sprintf("cms %.2f; lisi %.2f",mean(test$cms_smooth),mean(test$isi))) | visHist(test,metric = c("cms"))
 })
 
 ```
 
 
-```{r}
+```{r, eval=F}
 lapply(test.list,function(test){
   visOverview(test, "Batch", metric = c("cms", "isi"), other_var = "Group")    
 })
 ```
 
-```{r}
+```{r, eval=F}
 ndim=2
 test.list.names <- names(test.list)
 seurat.list <- lapply(test.list.names, function(name){
     sce <- test.list[[name]]
     #rownames(sce) <- paste0("feature",1:nrow(sce))
-    #obj <- as.Seurat(sce, counts = "counts", data = NULL)
+    obj <- as.Seurat(sce, counts = "counts", data = "logcounts")
     obj <- RenameAssays(obj, originalexp = 'RNA')
     #obj <- NormalizeData(obj) %>% ScaleData() %>% RunPCA(npcs=ndim)
 })
-names(seurat.list) <-test.list.names
+names(seurat.list) <- test.list.names
 
-saveRDS(seurat.list,"synthetic.seurat.rds")
+#saveRDS(seurat.list,"synthetic.seurat.rds")
 ```
 
 
