@@ -131,7 +131,6 @@ return(test)
 
 
 
-
 ```{r}
 # plot pca and metrics
 plotSimul <- function(test){
@@ -140,6 +139,8 @@ plotSimul <- function(test){
 }
 
 ```
+
+# Batch effect magnitude
 
 First, let's evaluate how the different mixing metrics detect increasing levels of simulated batch effect:
 
@@ -184,6 +185,7 @@ test.list.single.metrics <- data.frame(batchFactor = sub("batch0_single_batchFac
 test.list.single.metrics %>% pivot_longer(cols=c("cms","lisi")) %>% ggplot(aes(x=batchFactor, y=value, group=name)) + geom_line() + facet_wrap(~ name, scales = "free")
 ```
 
+# Differential batches abundances
 
 Next, let's evaluate how the metrics are affected by differential batches abundances
 
@@ -224,8 +226,11 @@ test.list.single.balance.metrics.balance <- data.frame(balance = sub("batch0_sin
 test.list.single.balance.metrics.balance %>% pivot_longer(cols=c("cms","lisi")) %>% ggplot(aes(x=balance, y=value, group=name)) + geom_line() + facet_wrap(~ name, scales = "free")
 ```
 
-Mean cms and lisi peak at equal batch size. Both metrics confound batch size unbalance with batch effects.
+Mean cms and lisi peak at equal batch size. Both metrics are strongly affected by batch size unbalance. The larger the unbalance, the lower cms/lisi.
 
+
+
+# Batches of heterogeneous cell type composition
 
 Now let's see how the mixing metrics behave when the batches contain different cell types that should not mix, with different levels of batch effect
 
@@ -243,17 +248,27 @@ test.list <- list()
 test.list[["batchStrong"]] <- simulateAndMeasure(ncellsTotal = ncellsTotal, freqBatchAB = freqBatchAB, batch.facScale = batch.factor.strong, batch.facLoc = batch.factor.strong, k=k, cell_min=cell_min, ncores=ncores)
 plotSimul(test.list[["batchStrong"]])
 ```
+Here the large effects are large, and cells are similarly separately by batch and cell type.
+Because batches do not overlap, lisi is ~1 and cms is ~0.
+Similarly, cells of one type do not mix with cells of another type, and thus 'cluster/celltype lisi' or 'cluster/celltype cms' are also ~1 and ~0, respectively.
 
 
 ```{r}
 test.list[["batchMild"]] <- simulateAndMeasure(ncellsTotal = ncellsTotal, freqBatchAB = freqBatchAB, batch.facScale = batch.factor.small, batch.facLoc = batch.factor.small, k=k, cell_min=cell_min, ncores=ncores)
 plotSimul(test.list[["batchMild"]])
 ```
+Here with mild batch effects, cells are largely grouped by cell type, and cells of different batches are more mixed.
+In this situation, both cms and lisi increase.
+Cells of different type do not mix with each other, so cluster_cms and cluster_lisi remain at minimum levels
 
 ```{r}
 test.list[["batch0"]] <- simulateAndMeasure(ncellsTotal = ncellsTotal, freqBatchAB = freqBatchAB, batch.facScale = 0, batch.facLoc = 0, k=k, cell_min=cell_min, ncores=ncores)
 plotSimul(test.list[["batch0"]])
 ```
+Without batch effects, cells of the same type from different batches are perfectly mixed.
+In this situation, cms and lisi further increase.
+Cells of different type do not mix with each other, so cluster_cms and cluster_lisi remain at minimum levels
+
 
 ```{r, eval=F}
 test.list[["batch0_unbalanced"]] <- simulateAndMeasure(ncellsTotal = ncellsTotal, freqBatchAB = freqBatchAB/2, batch.facScale = 0, batch.facLoc = 0, k=k, cell_min=cell_min, ncores=ncores)
@@ -265,6 +280,14 @@ plotSimul(test.list[["batch0_unbalanced"]])
 test.list[["overcorrected"]] <- simulateAndMeasure(ncellsTotal = ncellsTotal, freqBatchAB = freqBatchAB, batch.facScale = 0, batch.facLoc = 0, de.facLoc = 0, de.facScale = 0, k=k, cell_min=cell_min, ncores=ncores)
 plotSimul(test.list[["overcorrected"]])
 ```
+If we applied an integration method that 'overcorrects' (ie that removes batch effect very strongly at the expense of also removing biological signal), all cells from different batches are perfectly mixed, irrespective of the cell type .
+
+In this situation, cms and lisi further increase, indicating better batch mixig, irrespective of the non preservation of biological variation.
+
+Now, because cells of different type mix with each other, cluster_cms and cluster_lisi strongly increase
+
+This example illustrates that a higher cms/lisi is not necessarily indicating a better integration. 
+In this case, increase of cms/lisi is associated with overcorrection and loss of cell type -specific signals
 
 
 
@@ -279,45 +302,33 @@ wrap_plots(plot.list,ncol = 2)
 
 ggsave("testMetricsSynthethicData.png", width = 20, height = 10)
 ```
-
-
 ```{r, eval=F}
 lapply(test.list,function(test){
   visOverview(test, "Batch", metric = c("cms", "isi"), other_var = "Group")    
 })
 ```
 
-```{r, eval=T}
+# Export datasets
+
+```{r, eval=F, message=F, warning=F,results=F}
 ndim=2
-test.list.names <- names(test.list)
-seurat.list <- lapply(test.list.names, function(name){
-    sce <- test.list[[name]]
-    obj <- as.Seurat(sce, counts = "counts", data = "logcounts")
-    obj <- RenameAssays(obj, originalexp = 'RNA')
-    #obj <- NormalizeData(obj) %>% ScaleData() %>% RunPCA(npcs=ndim)
-})
-names(seurat.list) <- test.list.names
-saveRDS(seurat.list,"synthetic.seurat.rds")
 
-test.list.names <- names(test.list)
-seurat.list <- lapply(test.list.names, function(name){
-    sce <- test.list[[name]]
-    obj <- as.Seurat(sce, counts = "counts", data = "logcounts")
-    obj <- RenameAssays(obj, originalexp = 'RNA')
-    #obj <- NormalizeData(obj) %>% ScaleData() %>% RunPCA(npcs=ndim)
-})
-names(seurat.list) <- test.list.names
-saveRDS(seurat.list,"synthetic.seurat.rds")
+exportLists <- list(batchEffect=test.list.single,batchBalance=test.list.single.balance,batchCellTypes=test.list)
 
-test.list.names <- names(test.list)
-seurat.list <- lapply(test.list.names, function(name){
-    sce <- test.list[[name]]
+for (task in names(exportLists)){
+i <- exportLists[[task]]
+seurat.list <- lapply(names(i), function(name){
+    sce <- i[[name]]
     obj <- as.Seurat(sce, counts = "counts", data = "logcounts")
     obj <- RenameAssays(obj, originalexp = 'RNA')
     #obj <- NormalizeData(obj) %>% ScaleData() %>% RunPCA(npcs=ndim)
+    obj
 })
-names(seurat.list) <- test.list.names
-saveRDS(seurat.list,"synthetic.seurat.rds")
+names(seurat.list) <- names(i)
+
+saveRDS(seurat.list,paste0(task,".synthetic.seurat.rds"))
+
+}
 ```
 
 
