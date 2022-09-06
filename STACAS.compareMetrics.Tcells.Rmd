@@ -199,7 +199,7 @@ compute_lisi_splitByClass <- function(object, method.reduction, meta.batch, meta
 
 
 ```{r}
-getIntegrationMetrics <- function(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction){
+getIntegrationMetrics <- function(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction, metricsLabels){
 
 integrationMetrics <- list()
 
@@ -242,7 +242,7 @@ method = "uncorrected"
 method.reduction <- "pca"
 metricsObject <- object
 
-integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
+integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction, metricsLabels = metricsLabels)
 ```
 
 ```{r fig.height=8, fig.width=16}
@@ -300,7 +300,7 @@ method = "uncorrected_sharedFeatures"
 method.reduction <- "pca"
 metricsObject <- object
 
-integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
+integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction, metricsLabels = metricsLabels)
 
 
 ```
@@ -326,7 +326,7 @@ method = "STACAS"
 method.reduction <- "pca"
 metricsObject <- object_integrated_stacas
 
-integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
+integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction, metricsLabels = metricsLabels)
 
 ```
 
@@ -363,7 +363,7 @@ method = "semisupSTACAS"
 method.reduction <- "pca"
 metricsObject <- object_integrated_ss
 
-integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
+integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction, metricsLabels = metricsLabels)
 
 
 ```
@@ -402,7 +402,7 @@ method = "SEURAT_cca"
 method.reduction <- "pca"
 metricsObject <- object_integrated_cca
 
-integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
+integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction, metricsLabels = metricsLabels)
 
 ```
 
@@ -440,7 +440,7 @@ method = "SEURAT_rpca"
 method.reduction <- "pca"
 metricsObject <- object_integrated_rpca
 
-integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
+integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction, metricsLabels = metricsLabels)
 
 ```
 
@@ -472,7 +472,7 @@ method = "Harmony"
 method.reduction <- "harmony"
 metricsObject <- object_integrated_harmony
 
-integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
+integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction, metricsLabels = metricsLabels)
 
 ```
 
@@ -502,7 +502,7 @@ method = "FastMNN"
 method.reduction <- "mnn"
 metricsObject <- object_integrated_FastMNN
 
-integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
+integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction, metricsLabels = metricsLabels)
 
 
 ```
