@@ -1,0 +1,265 @@
+---
+title: "Test scIntegration metrics on synthetic data"
+author: "S. Carmona"
+output:
+  rmdformats::readthedown:
+    self-contained: true
+    highlight: haddock
+    thumbnails: false
+    css: styles.css
+knit: (function(input_file, encoding) {
+  out_dir <- 'docs';
+  rmarkdown::render(input_file, encoding=encoding,
+ output_file=file.path(dirname(input_file), out_dir, 'test_CellMixS.html'))})
+---
+
+# Introduction
+  
+We are interested in evaluating integration of scRNA-seq datasets of heterogeneous cell type composition and batch size, which are typical in tumor samples.
+Here we will test [CellMixS](https://www.bioconductor.org/packages/release/bioc/html/CellMixS.html) batch effect metrics on synthetic datasets generated with [splatter](https://bioconductor.org/packages/release/bioc/vignettes/splatter/inst/doc/splatter.html)
+We will simulate datasets that can contain one or two of two possible cell types, with different levels of batch effects and relative batch sizes
+
+
+# R environment
+
+Get and load some useful packages
+```{r message=F, warning=F,results=F, eval=T}
+renv::restore()
+
+if (!require("remotes", quietly = TRUE))
+    install.packages("remotes")
+library(remotes)
+
+if (!require("tidyr", quietly = TRUE))
+install.packages("tidyr")
+
+if (!require("scIntegrationMetrics", quietly = TRUE))
+install_github("carmonalab/scIntegrationMetrics") #calculates LISI and Silhouette
+
+if (!requireNamespace("BiocManager"))
+    install.packages("BiocManager")
+
+if (!requireNamespace("CellMixS"))
+  BiocManager::install("CellMixS")
+
+if (!requireNamespace("CellMixS"))
+  BiocManager::install("splatter")
+
+```
+
+
+```{r message=F, warning=F,results=F}
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(scIntegrationMetrics)
+library(patchwork)
+library(CellMixS)
+library(splatter)
+library(Seurat)
+library(BiocParallel)
+
+seed = 1234
+set.seed(seed)
+```
+
+```{r}
+# Load required packages
+suppressPackageStartupMessages({
+    library(SingleCellExperiment)
+    library(dplyr)
+    library(purrr)
+    library(ggplot2)
+    library(scater)
+})
+```
+
+
+
+
+
+Let's quantify dataset/batch mixing using the [LISI metric](https://github.com/immunogenomics/LISI) and conservation of biological information by means of Average Silhouette Width (ASW) of cell labels in the PCA space
+
+```{r}
+compute_lisi_splitByClass <- function(object, method.reduction, meta.batch, meta.label, labels.use=NULL, minCellPercPerClass=5, ...){
+  
+  object.list <- SplitObject(object, split.by = meta.label)
+  
+  if(!is.null(labels.use)) {  
+    object.list <- object.list[labels.use] 
+  }
+  
+  lisi.list <- list()
+  #message("Percentage of label contributed by batch: ")
+  for ( i in seq_len(length(object.list))){
+    
+    this.class <- names(object.list)[[i]]
+    
+    t <- table(object.list[[i]]@meta.data[[meta.batch]])
+    t.norm <- t/sum(t)*100
+    
+    #message(paste(this.class,round(t.norm,2)," "))
+    
+    batch.use.here <- names(t[t.norm > minCellPercPerClass])
+    
+    message("Nr. batches for ",this.class,":",paste(length(batch.use.here)))
+
+    if (length(batch.use.here)<2) {
+      message(sprintf("skipping %s not sufficiently represented in more than a single batch",this.class))
+      next
+    }
+    
+    lisi.this <- compute_lisi(object.list[[i]]@reductions[[method.reduction]]@cell.embeddings, meta_data = object.list[[i]]@meta.data, label_colnames=meta.batch, ...)[[1]]
+    lisi.this.normalized <- (lisi.this-1)/(length(batch.use.here)-1)
+    lisi.list[[i]] <- lisi.this.normalized
+    
+  }
+  
+  names(lisi.list) <- names(object.list)
+  #lisi.list <- lisi.list[-which(sapply(lisi.list,is.null))]
+  lisi.list <- lisi.list[!(sapply(lisi.list,is.null))]
+
+  return(lisi.list)
+}
+  
+```
+
+
+```{r}
+getIntegrationMetrics <- function(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction, metricsLabels){
+
+integrationMetrics <- list()
+
+metricsLabels_logic <- metricsObject@meta.data[[meta.label]] %in% metricsLabels
+
+lisi.this <- compute_lisi(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity)[[1]]
+
+lisi.this.normalized <- (lisi.this-1)/(length(metricsLabels)-1)
+
+#integrationMetrics[["batch_LISI"]] <- mean(lisi.this[metricsLabels_logic]) 
+#integrationMetrics[["batch_LISI_means"]] <- mean(tapply(lisi.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
+
+integrationMetrics[["batch_LISI"]] <- mean(lisi.this.normalized[metricsLabels_logic]) 
+integrationMetrics[["batch_LISI_means"]] <- mean(tapply(lisi.this.normalized,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
+
+lisi_splitByClass <- compute_lisi_splitByClass(metricsObject, method.reduction = method.reduction, meta.label = meta.label, meta.batch = meta.batch, perplexity=lisi_perplexity)
+
+integrationMetrics[["batch_LISI_perCellType"]] <- mean(unlist(lisi_splitByClass))
+
+classMeans <- round(sapply(lisi_splitByClass,mean),2)
+
+message(paste(names(lisi_splitByClass),classMeans," "))
+
+integrationMetrics[["batch_LISI_perCellType_means"]] <- mean(classMeans)
+
+sil.this <- compute_silhouette(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.label)[[1]]
+
+integrationMetrics[["celltype_ASW"]] <- mean(sil.this[metricsLabels_logic])
+integrationMetrics[["celltype_ASW_means"]] <- mean(tapply(sil.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
+
+integrationMetrics
+
+}
+```
+
+
+
+# Load test datasets
+
+Load synthetic datasets (batch effects + different subtype composition) to evaluate metrics
+
+```{r}
+object.list <- readRDS("batchCellTypes.synthetic.seurat.rds")
+```
+
+
+Annotated subtypes and dataset/study are stored in `functional.cluster` and `Study` metadata column, respectively.
+
+```{r}
+meta.batch <- "Batch"
+meta.label <- "Group"
+```
+
+
+Set critical parameters
+```{r}
+nfeatures <- 500 # number of highly variable genes for dimensionality reduction
+ndim <- 2 # number of PCA components for dimensionality reduction 
+lisi_perplexity <- 20 # number of neighbors for LISI (see below for details) to measure batch mixing
+```
+
+
+```{r}
+object.list <- sapply(object.list,function(object){
+  object <- FindVariableFeatures(object, nfeatures = nfeatures) %>% ScaleData() %>% RunPCA(npcs=ndim)  
+},USE.NAMES = T)
+```
+```{r}
+p.list <- lapply(object.list,function(object){
+  DimPlot(object, group.by = meta.batch, reduction = "pca") | DimPlot(object, group.by = meta.label, reduction = "pca") 
+})
+p.list
+```
+
+
+```{r}
+batchLabels.table <- table(object@meta.data[[meta.label]], object@meta.data[[meta.batch]])
+batchLabels.table
+```
+
+```{r}
+batchLabels <- round( batchLabels.table / rowSums(batchLabels.table) * 100) 
+batchLabels
+thrMaxPerBatch <- 90
+minBatchesPerCellType <- 2
+thrMinPerBatch <- 5
+```
+
+```{r}
+bachesPerLabel <- apply(batchLabels,1,function(x) sum(x > thrMinPerBatch) )
+removeLabels <- names(bachesPerLabel[bachesPerLabel < minBatchesPerCellType ])
+removeLabels <- unique(removeLabels,names(which(apply(batchLabels, 1, function(x) max(x) > thrMaxPerBatch) ))) #  contributed in more than 90% by a single dataset/batch
+removeLabels
+metricsLabels <- setdiff(unique(object@meta.data[[meta.label]]),removeLabels)
+```
+
+```{r}
+integrationMetrics <- list()
+
+method = "uncorrected"
+method.reduction <- "pca"
+metricsObject <- object
+
+integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction, metricsLabels = metricsLabels)
+```
+
+
+Now let's do it for each dataset
+```{r}
+
+integrationMetrics <- lapply(object.list,function(metricsObject){
+ getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction, metricsLabels = metricsLabels)
+})
+```
+
+```{r}
+plot.list <- list()
+
+lapply(names(object.list),function(method){
+
+metricsObject <- object.list[[method]]
+  
+plot.list[[method]][["batch"]] <- DimPlot(metricsObject, group.by = meta.batch, reduction = "pca") + theme(aspect.ratio = 1) + labs(subtitle = "Dataset/batch", title = method, caption = sprintf("batch_LISI %.2f",integrationMetrics[[method]][["batch_LISI"]]))
+plot.list[[method]][["label"]] <- DimPlot(metricsObject, group.by = meta.label, label=T, label.size = 4, reduction = "pca") + theme(aspect.ratio = 1) + labs(subtitle = "Cell labels", title = method, caption = sprintf("ASW %.2f; ASW_meanOfMeans %.2f",integrationMetrics[[method]][["celltype_ASW"]],integrationMetrics[[method]][["celltype_ASW_means"]]))
+
+plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
+
+})
+
+```
+
+
+
+WHY USING metricsLabels TO DETERMINE THE NUMBER OF LISI BATHCES??
+
+TODO: Check in the other notebooks; move to scIntegration metrics
