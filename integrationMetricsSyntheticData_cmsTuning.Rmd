@@ -1,0 +1,352 @@
+---
+title: "Test CellMixS metrics on Splatter synthetic data"
+author: "S. Carmona"
+output:
+  rmdformats::readthedown:
+    self-contained: true
+    highlight: haddock
+    thumbnails: false
+    css: styles.css
+knit: (function(input_file, encoding) {
+  out_dir <- 'docs';
+  rmarkdown::render(input_file, encoding=encoding,
+ output_file=file.path(dirname(input_file), out_dir, 'test_CellMixS_batchmin.html'))})
+---
+
+# Introduction
+  
+We are interested in evaluating integration of scRNA-seq datasets of heterogeneous cell type composition and batch size, which are typical in tumor samples.
+Here we will test [CellMixS](https://www.bioconductor.org/packages/release/bioc/html/CellMixS.html) batch effect metrics on synthetic datasets generated with [splatter](https://bioconductor.org/packages/release/bioc/vignettes/splatter/inst/doc/splatter.html)
+We will simulate datasets that can contain one or two of two possible cell types, with different levels of batch effects and relative batch sizes
+
+
+# R environment
+
+Get and load some useful packages
+```{r message=F, warning=F,results=F, eval=T}
+renv::restore()
+
+if (!require("remotes", quietly = TRUE))
+    install.packages("remotes")
+library(remotes)
+
+if (!require("tidyr", quietly = TRUE))
+install.packages("tidyr")
+
+if (!require("scIntegrationMetrics", quietly = TRUE))
+install_github("carmonalab/scIntegrationMetrics") #calculates LISI and Silhouette
+
+if (!requireNamespace("BiocManager"))
+    install.packages("BiocManager")
+
+if (!requireNamespace("CellMixS"))
+  BiocManager::install("CellMixS")
+
+if (!requireNamespace("CellMixS"))
+  BiocManager::install("splatter")
+
+```
+
+
+```{r message=F, warning=F,results=F}
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(scIntegrationMetrics)
+library(patchwork)
+library(CellMixS)
+library(splatter)
+library(Seurat)
+library(BiocParallel)
+
+seed = 1234
+set.seed(seed)
+```
+
+```{r}
+# Load required packages
+suppressPackageStartupMessages({
+    library(SingleCellExperiment)
+    library(dplyr)
+    library(purrr)
+    library(ggplot2)
+    library(scater)
+})
+```
+
+Prepare extreme heterogeneous datasets (batch effects + different subtype composition) to evaluate metrics
+
+```{r}
+
+# The next function will generate synthetic datasets, in two possible modes:
+# mode twoGroups=T
+# will generate 3 batches including two cell types/groups
+# Batch 1: contains cell types A and B with equal proportions
+# Batch 2: contains only cell type A (cells Group 1)
+# Batch 3: contains only cell type B (cells Group 2)
+# Batch 1 contains a frequency of `freqBatchAB` of total cells; and the rest are equally devided between Batches 2 and 3.
+#
+# mode twoGroups=F
+# will generate 2 baches with 1 cell type
+# then will evaluate a number of metrics from the CellMixS Bioconductor package
+
+simulateAndMeasure <- function(ncellsTotal, freqBatchAB, freqBatchA=NULL, twoGroups=T, de.facLoc=0.2, de.facScale=0.2, batch.facScale=0, batch.facLoc=0, mySeed=123, k=20, cell_min=10, batch_min=NULL, ncores=8){
+  
+if(is.null(freqBatchA)) {
+  freqBatchA <- (1-freqBatchAB)/2
+}
+  freqBatchB <- 1-freqBatchAB-freqBatchA
+
+if (twoGroups){
+  group.prob <- 0.5 # cell type A frequency; avoid group.prob close to 0 or 1
+  batchCells <- round(c(freqBatchAB,freqBatchA/group.prob,freqBatchB/(1-group.prob))*ncellsTotal)
+  test <- splatSimulate(batchCells = batchCells, group.prob = c(group.prob, 1-group.prob), method = "groups", verbose = FALSE, de.facLoc=de.facLoc, de.facScale=de.facScale, batch.facScale= batch.facScale, batch.facLoc=batch.facLoc ) # see ?SplatParams  de.facLoc=0.2, de.facScale=0.2
+  test <- test[,!(test$Batch=="Batch2" & test$Group=="Group1")]
+  test <-  test[,!(test$Batch=="Batch3" & test$Group=="Group2")]
+} else {
+  batchCells <- round(c(freqBatchAB,1-freqBatchAB)*ncellsTotal)
+  test <- splatSimulate(batchCells = batchCells, verbose = FALSE, de.facLoc=de.facLoc, de.facScale=de.facScale, batch.facScale= batch.facScale, batch.facLoc=batch.facLoc )
+  test$Group <- "Group1"
+}
+  
+set.seed(mySeed)
+
+print(table(test$Group,test$Batch))
+test <- logNormCounts(test)
+test <- runPCA(test, ncomponents = 2, ntop=500)
+#test <- evalIntegration(test, metrics = c("isi", "cms","mixingMetric","entropy"), group = "Batch", k = k, n_dim = 2, cell_min = cell_min, weight = F, BPPARAM=MulticoreParam(workers=ncores))
+test <- evalIntegration(test, metrics = c("isi", "cms"), group = "Batch", k = k, n_dim = 2, cell_min = cell_min, weight = F, batch_min = batch_min, BPPARAM=MulticoreParam(workers=ncores))
+
+if(twoGroups){
+test <- evalIntegration(test, metrics = c("isi", "cms"), group = "Group", k = k, n_dim = 2, cell_min = cell_min, weight = F, batch_min = batch_min, BPPARAM=MulticoreParam(workers=ncores), res_name = c("cluster_lisi", "cluster_cms"))
+}
+
+return(test)
+}
+
+```
+
+
+
+
+```{r}
+# plot pca and metrics
+plotSimul <- function(test){
+  plotPCA(test, shape_by = "Group", colour_by = "Batch") + scale_color_discrete(labels = paste(levels(test$Batch),":",table(test$Batch))) + coord_fixed() + labs(subtitle =  sprintf("cms %.2f; lisi %.2f; cluster_cms %.2f; cluster_lisi %.2f",mean(test$cms_smooth),mean(test$isi),mean(test$cms_smooth.cluster_cms),mean(test$cluster_lisi)),
+) | plotPCA(test, shape_by = "Batch", colour_by = "Group") + coord_fixed()
+}
+
+```
+
+
+# Set parameters
+```{r}
+k = 30 # nr. neighbors for lisi and cms
+cell_min = 4 # cms: Minimum number of cells from each group to be included into the AD test
+batch_min = 5 # cms: Minimum number of cells per batch to include in to the AD test. If set, neighbors will be included until batch_min cells from each batch are present. 
+ncores = 4
+ncellsTotal = 1000
+freqBatchAB = 0.5
+test.list.single <- list()
+```
+
+In the initial configuration (k=20 and default cms parameters), mean cms and lisi peak at equal batch size. Both metrics are strongly affected by batch size unbalance. The larger the unbalance, the lower cms/lisi.
+Here we try if other cms configurations make it robust to unbalance (using batch_min and increased k) while preserving other desirable properties
+
+# Batch effect magnitude
+
+First, let's evaluate how the different mixing metrics detect increasing levels of simulated batch effect:
+
+
+```{r}
+for (batch.factor in seq(0,0.12,by=0.02)) { 
+ name <- paste0("batch0_single_batchFactor_",batch.factor)
+  test.list.single[[name]] <- simulateAndMeasure(ncellsTotal = ncellsTotal, freqBatchAB = freqBatchAB, batch.facScale = batch.factor, batch.facLoc = batch.factor, k=k, cell_min=cell_min, ncores=ncores, batch_min=batch_min, twoGroups = F)
+}
+```
+
+
+
+
+```{r  message=F, warning=F}
+pp <- lapply(names(test.list.single), function(name) { 
+  plotPCA(test.list.single[[name]], shape_by = "Group", colour_by = "Batch") + scale_color_discrete(labels = paste(levels(test.list.single[[name]]$Batch),":",table(test.list.single[[name]]$Batch))) + coord_fixed() + labs(subtitle =  sprintf("cms %.2f; lisi %.2f",mean(test.list.single[[name]]$cms_smooth),mean(test.list.single[[name]]$isi))
+) & ggtitle(name) & theme(aspect.ratio=1)  | visHist(test.list.single[[name]],metric = c("cms"))
+  })
+pp
+pp.out <- wrap_plots(pp, ncol = 2)
+ggsave("testMetricsSynthethicData_SingleCellType_BatchFactor.png",pp.out,width = 10,height = 10)
+```
+
+
+```{r}
+test.list.single.metrics <- data.frame(batchFactor = sub("batch0_single_batchFactor_","",names(test.list.single)),
+                                      cms=sapply(test.list.single, function(x) mean(x$cms_smooth)),
+                                      lisi= sapply(test.list.single, function(x) mean(x$isi)))
+ 
+test.list.single.metrics %>% pivot_longer(cols=c("cms","lisi")) %>% ggplot(aes(x=batchFactor, y=value, group=name)) + geom_line() + facet_wrap(~ name, scales = "free")
+```
+
+Metrics cms and lisi behave as expected, decreasing with batch effects between the two simulated batches. Mean cms ranges from 0.5 for perfect mixing to 0, no mixing; lisi goes from almost 2 for perfect mixing to 1 for no mixing.
+
+
+
+# Differential batches abundances
+
+Next, let's evaluate how the metrics are affected by differential batches abundances
+
+Parameters
+```{r}
+ncellsTotal = 1000
+test.list.single.balance <- list()
+
+```
+
+
+```{r}
+for (myfreqBatchAB in seq(0.2,0.8,by=0.1)) { 
+ name <- paste0("batch0_single_balance_",myfreqBatchAB)
+  test.list.single.balance[[name]] <- simulateAndMeasure(ncellsTotal = ncellsTotal, freqBatchAB = myfreqBatchAB, batch.facScale = 0, batch.facLoc = 0, k=k, cell_min=cell_min, ncores=ncores, batch_min=batch_min, twoGroups = F)
+}
+```
+
+We get the warning that "There are less than 'batch_min' cells of each batch in a reasonable sized neighbourhood"
+
+This is expected with 
+
+
+```{r}
+pp <- lapply(names(test.list.single.balance), function(name) { 
+  plotPCA(test.list.single.balance[[name]], shape_by = "Group", colour_by = "Batch") + scale_color_discrete(labels = paste(levels(test.list.single.balance[[name]]$Batch),":",table(test.list.single.balance[[name]]$Batch))) + coord_fixed() + labs(subtitle =  sprintf("cms %.2f; lisi %.2f",mean(test.list.single.balance[[name]]$cms_smooth),mean(test.list.single.balance[[name]]$isi))
+) & ggtitle(name) & theme(aspect.ratio=1)  | visHist(test.list.single.balance[[name]],metric = c("cms"))
+  })
+pp
+pp.out <- wrap_plots(pp, ncol = 2)
+ggsave("testMetricsSynthethicData_SingleCellType_BatchBalance.png",pp.out,width = 10,height = 10)
+```
+
+
+
+```{r}
+test.list.single.balance.metrics.balance <- data.frame(balance = sub("batch0_single_balance_","",names(test.list.single.balance)),
+                                      cms=sapply(test.list.single.balance, function(x) mean(x$cms_smooth)),
+                                      lisi= sapply(test.list.single.balance, function(x) mean(x$isi)))
+ 
+test.list.single.balance.metrics.balance %>% pivot_longer(cols=c("cms","lisi")) %>% ggplot(aes(x=balance, y=value, group=name)) + geom_line() + facet_wrap(~ name, scales = "free")
+```
+
+The pattern is the same for cms and lisi as for the default configuration. However, using batch_min (increasing neighborhood when needed)  mitigates the relative drop of cms compared to max (50/50 balance) cms, from ~0.1 (default setting) to ~0.38 (batch_min) in the 20/80 batches balance setting. The relative impact is milder for cms (~25%) than for lisi (~50%)
+
+
+# Batches of heterogeneous cell type composition
+
+Now let's see how the mixing metrics behave when the batches contain different cell types that should not mix, with different levels of batch effect
+
+Parameters
+```{r}
+ncellsTotal = 1000
+freqBatchAB = 1/3
+batch.factor.strong = 0.1
+batch.factor.small = 0.06
+test.list <- list()
+```
+
+
+```{r}
+test.list[["batchStrong"]] <- simulateAndMeasure(ncellsTotal = ncellsTotal, freqBatchAB = freqBatchAB, batch.facScale = batch.factor.strong, batch.facLoc = batch.factor.strong, k=k, cell_min=cell_min, ncores=ncores, batch_min=batch_min)
+plotSimul(test.list[["batchStrong"]])
+```
+Here the large effects are large, and cells are similarly separately by batch and cell type.
+Because batches do not overlap, lisi is ~1 and cms is ~0.
+Similarly, cells of one type do not mix with cells of another type, and thus 'cluster/celltype lisi' or 'cluster/celltype cms' are also ~1 and ~0, respectively.
+
+
+```{r}
+test.list[["batchMild"]] <- simulateAndMeasure(ncellsTotal = ncellsTotal, freqBatchAB = freqBatchAB, batch.facScale = batch.factor.small, batch.facLoc = batch.factor.small, k=k, cell_min=cell_min, ncores=ncores, batch_min=batch_min)
+plotSimul(test.list[["batchMild"]])
+```
+Here with mild batch effects, cells are largely grouped by cell type, and cells of different batches are more mixed.
+In this situation, both cms and lisi increase.
+Cells of different type do not mix with each other, so cluster_cms and cluster_lisi remain at minimum levels.
+
+
+```{r}
+test.list[["batch0"]] <- simulateAndMeasure(ncellsTotal = ncellsTotal, freqBatchAB = freqBatchAB, batch.facScale = 0, batch.facLoc = 0, k=k, cell_min=cell_min, ncores=ncores, batch_min=batch_min)
+plotSimul(test.list[["batch0"]])
+```
+Without batch effects, cells of the same type from different batches are perfectly mixed.
+In this situation, cms and lisi further increase.
+
+In this big neighborhood configuration, it seems though that cms loses sensitivity to detect mild batch effect (increased from 0.43 with mild batch effects to 0.45 with no batch effects)
+
+Cells of different type do not mix with each other, so cluster_cms and cluster_lisi remain at minimum levels
+
+
+
+```{r, eval=F}
+test.list[["batch0_unbalanced"]] <- simulateAndMeasure(ncellsTotal = ncellsTotal, freqBatchAB = freqBatchAB/2, batch.facScale = 0, batch.facLoc = 0, k=k, cell_min=cell_min, ncores=ncores, batch_min=batch_min)
+plotSimul(test.list[["batch0_unbalanced"]])
+```
+
+
+```{r}
+test.list[["overcorrected"]] <- simulateAndMeasure(ncellsTotal = ncellsTotal, freqBatchAB = freqBatchAB, batch.facScale = 0, batch.facLoc = 0, de.facLoc = 0, de.facScale = 0, k=k, cell_min=cell_min, ncores=ncores, batch_min=batch_min)
+plotSimul(test.list[["overcorrected"]])
+```
+
+If we applied an integration method that 'overcorrects' (ie that removes batch effect very strongly at the expense of also removing biological signal), all cells from different batches are perfectly mixed, irrespective of the cell type .
+
+In this situation, cms and lisi further increase, indicating better batch mixing, irrespective of the non preservation of biological variation.
+
+Now, because cells of different type mix with each other, cluster_cms and cluster_lisi strongly increase
+
+This example illustrates that a higher cms/lisi is not necessarily indicating a better integration. 
+In this case, increase of cms/lisi is associated with overcorrection and loss of cell type -specific signals
+
+
+
+```{r, message=F, warning=F, fig.width=20, fig.height=20}
+
+plot.list <- lapply(names(test.list),function(name){
+  plotSimul(test.list[[name]]) & ggtitle(name) & theme(aspect.ratio=1) | visHist(test.list[[name]],metric = c("cms"))
+  #plotPCA(test, shape_by = "Group", colour_by = "Batch") + ggtitle(sprintf("cms %.2f; lisi %.2f",mean(test$cms_smooth),mean(test$isi))) | visHist(test,metric = c("cms"))
+})
+
+wrap_plots(plot.list,ncol = 2)
+
+ggsave("testMetricsSynthethicData.png", width = 20, height = 10)
+```
+```{r, eval=F}
+lapply(test.list,function(test){
+  visOverview(test, "Batch", metric = c("cms", "isi"), other_var = "Group")    
+})
+```
+
+# Export datasets
+
+```{r, eval=F, message=F, warning=F,results=F}
+ndim=2
+
+exportLists <- list(batchEffect=test.list.single,batchBalance=test.list.single.balance,batchCellTypes=test.list)
+
+for (task in names(exportLists)){
+i <- exportLists[[task]]
+seurat.list <- lapply(names(i), function(name){
+    sce <- i[[name]]
+    obj <- as.Seurat(sce, counts = "counts", data = "logcounts")
+    obj <- RenameAssays(obj, originalexp = 'RNA')
+    #obj <- NormalizeData(obj) %>% ScaleData() %>% RunPCA(npcs=ndim)
+    obj
+})
+names(seurat.list) <- names(i)
+
+saveRDS(seurat.list,paste0(task,".synthetic.seurat.rds"))
+
+}
+```
+
+
+
+
+
+
