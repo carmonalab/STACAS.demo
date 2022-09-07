@@ -16,7 +16,7 @@ knit: (function(input_file, encoding) {
 # Introduction
   
 We are interested in evaluating integration of scRNA-seq datasets of heterogeneous cell type composition and batch size, which are typical in tumor samples.
-Here we will test [CellMixS](https://www.bioconductor.org/packages/release/bioc/html/CellMixS.html) batch effect metrics on synthetic datasets generated with [splatter](https://bioconductor.org/packages/release/bioc/vignettes/splatter/inst/doc/splatter.html)
+Here we will test different metrics used to assess quality of data integration or batch effect removal on synthetic datasets generated with [splatter](https://bioconductor.org/packages/release/bioc/vignettes/splatter/inst/doc/splatter.html).
 We will simulate datasets that can contain one or two of two possible cell types, with different levels of batch effects and relative batch sizes
 
 
@@ -77,87 +77,76 @@ suppressPackageStartupMessages({
 
 
 
-
-Let's quantify dataset/batch mixing using the [LISI metric](https://github.com/immunogenomics/LISI) and conservation of biological information by means of Average Silhouette Width (ASW) of cell labels in the PCA space
-
 ```{r}
-compute_lisi_splitByClass <- function(object, method.reduction, meta.batch, meta.label, labels.use=NULL, minCellPercPerClass=5, ...){
-  
-  object.list <- SplitObject(object, split.by = meta.label)
-  
-  if(!is.null(labels.use)) {  
-    object.list <- object.list[labels.use] 
-  }
-  
-  lisi.list <- list()
-  #message("Percentage of label contributed by batch: ")
-  for ( i in seq_len(length(object.list))){
+# splits data by split_by and calculates normalized lisi in each subset
+compute_lisi_splitBy <- function (X, meta_data, label_colnames, split_by_colname, normalize=T, ...){
+   
+  X.list <- split.data.frame(X,meta_data[,split_by_colname])
+  meta_data.list <- split.data.frame(meta_data,meta_data[,split_by_colname])
     
-    this.class <- names(object.list)[[i]]
-    
-    t <- table(object.list[[i]]@meta.data[[meta.batch]])
-    t.norm <- t/sum(t)*100
-    
-    #message(paste(this.class,round(t.norm,2)," "))
-    
-    batch.use.here <- names(t[t.norm > minCellPercPerClass])
-    
-    message("Nr. batches for ",this.class,":",paste(length(batch.use.here)))
-
-    if (length(batch.use.here)<2) {
-      message(sprintf("skipping %s not sufficiently represented in more than a single batch",this.class))
-      next
+  X.list.list <- lapply(seq_along(X.list), function(i) {
+    x <- X.list[[i]]
+    m <- meta_data.list[[i]]
+    x.lisi <- compute_lisi(x, m, label_colnames=label_colnames, ... )
+    if(normalize){
+      label_colnames_levels <- apply(m[,label_colnames,drop=F],2,function(x) length(unique(x)))
+      x.lisi <- t(t(x.lisi-1)*(label_colnames_levels-1))
     }
-    
-    lisi.this <- compute_lisi(object.list[[i]]@reductions[[method.reduction]]@cell.embeddings, meta_data = object.list[[i]]@meta.data, label_colnames=meta.batch, ...)[[1]]
-    lisi.this.normalized <- (lisi.this-1)/(length(batch.use.here)-1)
-    lisi.list[[i]] <- lisi.this.normalized
-    
-  }
-  
-  names(lisi.list) <- names(object.list)
-  #lisi.list <- lisi.list[-which(sapply(lisi.list,is.null))]
-  lisi.list <- lisi.list[!(sapply(lisi.list,is.null))]
-
-  return(lisi.list)
+    message("Processing group ",unique(m[,split_by_colname]))
+    return(x.lisi)
+  })
+  names(X.list.list) <- unique(meta_data[,split_by_colname])
+  return(X.list.list)
 }
+  
   
 ```
 
 
 ```{r}
-getIntegrationMetrics <- function(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction, metricsLabels){
+getIntegrationMetrics <- function(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction, metricsLabels=NULL){
 
 integrationMetrics <- list()
 
+if(is.null(metricsLabels)) metricsLabels <- levels(metricsObject@meta.data[[meta.label]])
+message(paste("Cell type labels:",paste(metricsLabels,collapse = ",")))
+    
 metricsLabels_logic <- metricsObject@meta.data[[meta.label]] %in% metricsLabels
+batchNames <- levels(metricsObject@meta.data[[meta.batch]])
+message(paste("Batches:",paste(batchNames,collapse = ",")))
 
+#batch lisi
 lisi.this <- compute_lisi(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity)[[1]]
+
+lisi.this.normalized <- (lisi.this-1)/(length(batchNames)-1)
+
+integrationMetrics[["batch_nLISI"]] <- mean(lisi.this.normalized[metricsLabels_logic]) 
+#integrationMetrics[["batch_nLISI_means"]] <- mean(tapply(lisi.this.normalized,metricsObject@meta.data[[meta.label]],mean)[metricsLabels]) #means per cell type
+
+#batch lisi per celltype 
+lisi_splitByCelltype <- compute_lisi_splitBy(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity, split_by_colname=meta.label, normalize = T)
+
+integrationMetrics[["batch_nLISI_perCellType"]] <- mean(unlist(lisi_splitByCelltype))
+classMeans <- sapply(lisi_splitByCelltype,mean)
+message("batch_nLISI_perCellType: ",paste(names(lisi_splitByCelltype),round(classMeans,2)," "))
+integrationMetrics[["batch_nLISI_perCellType_means"]] <- mean(classMeans)
+
+#cluster/celltype lisi
+lisi.this <- compute_lisi(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.label, perplexity = lisi_perplexity)[[1]]
 
 lisi.this.normalized <- (lisi.this-1)/(length(metricsLabels)-1)
 
-#integrationMetrics[["batch_LISI"]] <- mean(lisi.this[metricsLabels_logic]) 
-#integrationMetrics[["batch_LISI_means"]] <- mean(tapply(lisi.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
+integrationMetrics[["celltype_nLISI"]] <- mean(lisi.this.normalized[metricsLabels_logic]) 
+integrationMetrics[["celltype_nLISI_means"]] <- mean(tapply(lisi.this.normalized,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
 
-integrationMetrics[["batch_LISI"]] <- mean(lisi.this.normalized[metricsLabels_logic]) 
-integrationMetrics[["batch_LISI_means"]] <- mean(tapply(lisi.this.normalized,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
-
-lisi_splitByClass <- compute_lisi_splitByClass(metricsObject, method.reduction = method.reduction, meta.label = meta.label, meta.batch = meta.batch, perplexity=lisi_perplexity)
-
-integrationMetrics[["batch_LISI_perCellType"]] <- mean(unlist(lisi_splitByClass))
-
-classMeans <- round(sapply(lisi_splitByClass,mean),2)
-
-message(paste(names(lisi_splitByClass),classMeans," "))
-
-integrationMetrics[["batch_LISI_perCellType_means"]] <- mean(classMeans)
+# silhouette
 
 sil.this <- compute_silhouette(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.label)[[1]]
 
 integrationMetrics[["celltype_ASW"]] <- mean(sil.this[metricsLabels_logic])
 integrationMetrics[["celltype_ASW_means"]] <- mean(tapply(sil.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
 
-integrationMetrics
+return(integrationMetrics)
 
 }
 ```
@@ -194,13 +183,20 @@ object.list <- sapply(object.list,function(object){
   object <- FindVariableFeatures(object, nfeatures = nfeatures) %>% ScaleData() %>% RunPCA(npcs=ndim)  
 },USE.NAMES = T)
 ```
+
 ```{r}
 p.list <- lapply(object.list,function(object){
-  DimPlot(object, group.by = meta.batch, reduction = "pca") | DimPlot(object, group.by = meta.label, reduction = "pca") 
+  a <- DimPlot(object, group.by = meta.batch, reduction = "pca") | DimPlot(object, group.by = meta.label, reduction = "pca") 
+  a & theme(aspect.ratio = 1)
 })
 p.list
 ```
 
+Test with one object
+
+```{r}
+object <- object.list[[1]]
+```
 
 ```{r}
 batchLabels.table <- table(object@meta.data[[meta.label]], object@meta.data[[meta.batch]])
@@ -241,25 +237,74 @@ integrationMetrics <- lapply(object.list,function(metricsObject){
  getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction, metricsLabels = metricsLabels)
 })
 ```
-
 ```{r}
+metricsShow <- c("batch_nLISI", "batch_nLISI_perCellType", "batch_nLISI_perCellType_means", 
+"celltype_nLISI", "celltype_nLISI_means", "celltype_ASW", "celltype_ASW_means")
+```
+
+
+```{r, fig.width=6, fig.height=4}
 plot.list <- list()
 
-lapply(names(object.list),function(method){
+metricsShow.batch <- grep("batch",metricsShow,value = T)
 
-metricsObject <- object.list[[method]]
+metricsShow.celltype <- grep("celltype",metricsShow,value = T)
+
+
+
+for (method in names(object.list)) {
+  metricsObject <- object.list[[method]]
+
+  metricsShow.batch.caption <- paste(metricsShow.batch,round(as.numeric(integrationMetrics[[method]][metricsShow.batch]),2),collapse = "; ")
+  metricsShow.celltype.caption <- paste(metricsShow.celltype,round(as.numeric(integrationMetrics[[method]][metricsShow.celltype]),2),collapse = "; ")
+    
+  plot.list[[method]][["batch"]] <-
+    DimPlot(metricsObject, group.by = meta.batch, reduction = "pca") + theme(aspect.ratio = 1) + labs(
+      subtitle = "Dataset/batch",
+      title = method,
+      caption = metricsShow.batch.caption
+        )
   
-plot.list[[method]][["batch"]] <- DimPlot(metricsObject, group.by = meta.batch, reduction = "pca") + theme(aspect.ratio = 1) + labs(subtitle = "Dataset/batch", title = method, caption = sprintf("batch_LISI %.2f",integrationMetrics[[method]][["batch_LISI"]]))
-plot.list[[method]][["label"]] <- DimPlot(metricsObject, group.by = meta.label, label=T, label.size = 4, reduction = "pca") + theme(aspect.ratio = 1) + labs(subtitle = "Cell labels", title = method, caption = sprintf("ASW %.2f; ASW_meanOfMeans %.2f",integrationMetrics[[method]][["celltype_ASW"]],integrationMetrics[[method]][["celltype_ASW_means"]]))
+  plot.list[[method]][["label"]] <-
+    DimPlot(
+      metricsObject,
+      group.by = meta.label,
+      label = T,
+      label.size = 4,
+      reduction = "pca"
+    ) + theme(aspect.ratio = 1) + labs(
+      subtitle = "Cell labels",
+      title = method,
+      caption = metricsShow.celltype.caption
+    )
+  
+  p <- plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
+  
+  print(p)
+  
+}
 
-plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
-
-})
 
 ```
 
 
+# Summary of Integration Metrics
 
-WHY USING metricsLabels TO DETERMINE THE NUMBER OF LISI BATHCES??
+```{r, fig.height=4, fig.width=3}
 
-TODO: Check in the other notebooks; move to scIntegration metrics
+integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) %>% tibble::rownames_to_column() %>% dplyr::rename(value=unlist.integrationMetrics.) %>% separate(rowname, c("Method","Metric"), sep="\\.")
+
+ggplot(integrationMetricsSummary,aes(x=reorder(Method,-value), y=value, fill=Method)) + geom_bar(stat="identity") + 
+    theme_bw() + 
+    theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Dataset") + facet_wrap(~Metric, scales = "free")
+
+```
+
+
+```{r fig.height=5, fig.width=5}
+p <- wrap_plots(lapply(plot.list,wrap_plots),ncol=2)
+p & theme(legend.position = "none")
+#ggsave("compareMetrics.umap.png",p, width = 30, height = 30)
+```
+
+
