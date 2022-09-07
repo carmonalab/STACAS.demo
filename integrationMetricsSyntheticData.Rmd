@@ -92,7 +92,7 @@ Prepare extreme heterogeneous datasets (batch effects + different subtype compos
 # will generate 2 baches with 1 cell type
 # then will evaluate a number of metrics from the CellMixS Bioconductor package
 
-simulateAndMeasure <- function(ncellsTotal, freqBatchAB, freqBatchA=NULL, twoGroups=T, de.facLoc=0.2, de.facScale=0.2, batch.facScale=0, batch.facLoc=0, mySeed=123, k=20, cell_min=10, ncores=8){
+simulateAndMeasure <- function(ncellsTotal, freqBatchAB, freqBatchA=NULL, twoGroups=T, de.facLoc=0.2, de.facScale=0.2, batch.facScale=0, batch.facLoc=0, mySeed=123, k=20, cell_min=10, batch_min=NULL, ncores=8){
   
 if(is.null(freqBatchA)) {
   freqBatchA <- (1-freqBatchAB)/2
@@ -117,10 +117,10 @@ print(table(test$Group,test$Batch))
 test <- logNormCounts(test)
 test <- runPCA(test, ncomponents = 2, ntop=500)
 #test <- evalIntegration(test, metrics = c("isi", "cms","mixingMetric","entropy"), group = "Batch", k = k, n_dim = 2, cell_min = cell_min, weight = F, BPPARAM=MulticoreParam(workers=ncores))
-test <- evalIntegration(test, metrics = c("isi", "cms"), group = "Batch", k = k, n_dim = 2, cell_min = cell_min, weight = F,  BPPARAM=MulticoreParam(workers=ncores))
+test <- evalIntegration(test, metrics = c("isi", "cms"), group = "Batch", k = k, n_dim = 2, cell_min = cell_min, weight = F, batch_min = batch_min, BPPARAM=MulticoreParam(workers=ncores))
 
 if(twoGroups){
-test <- evalIntegration(test, metrics = c("isi", "cms"), group = "Group", k = k, n_dim = 2, cell_min = cell_min, weight = F,  BPPARAM=MulticoreParam(workers=ncores), res_name = c("cluster_lisi", "cluster_cms"))
+test <- evalIntegration(test, metrics = c("isi", "cms"), group = "Group", k = k, n_dim = 2, cell_min = cell_min, weight = F, batch_min = batch_min, BPPARAM=MulticoreParam(workers=ncores), res_name = c("cluster_lisi", "cluster_cms"))
 }
 
 return(test)
@@ -163,10 +163,9 @@ for (batch.factor in seq(0,0.12,by=0.03)) {
 ```
 
 
-Metrics cms and lisi behave as expected, decreasing with batch effects between the two simulated batches. Mean cms ranges from 0.5 for perfect mixing to 0, no mixing; lisi goes from almost 2 for perfect mixing to 1 for no mixing.
 
 
-```{r}
+```{r  message=F, warning=F}
 pp <- lapply(names(test.list.single), function(name) { 
   plotPCA(test.list.single[[name]], shape_by = "Group", colour_by = "Batch") + scale_color_discrete(labels = paste(levels(test.list.single[[name]]$Batch),":",table(test.list.single[[name]]$Batch))) + coord_fixed() + labs(subtitle =  sprintf("cms %.2f; lisi %.2f",mean(test.list.single[[name]]$cms_smooth),mean(test.list.single[[name]]$isi))
 ) & ggtitle(name) & theme(aspect.ratio=1)  | visHist(test.list.single[[name]],metric = c("cms"))
@@ -184,6 +183,9 @@ test.list.single.metrics <- data.frame(batchFactor = sub("batch0_single_batchFac
  
 test.list.single.metrics %>% pivot_longer(cols=c("cms","lisi")) %>% ggplot(aes(x=batchFactor, y=value, group=name)) + geom_line() + facet_wrap(~ name, scales = "free")
 ```
+
+Metrics cms and lisi behave as expected, decreasing with batch effects between the two simulated batches. Mean cms ranges from 0.5 for perfect mixing to 0, no mixing; lisi goes from almost 2 for perfect mixing to 1 for no mixing.
+
 
 # Differential batches abundances
 
@@ -206,7 +208,7 @@ for (myfreqBatchAB in seq(0.2,0.8,by=0.1)) {
 
 
 
-```{r, fig.height=10, fig.width=4}
+```{r}
 pp <- lapply(names(test.list.single.balance), function(name) { 
   plotPCA(test.list.single.balance[[name]], shape_by = "Group", colour_by = "Batch") + scale_color_discrete(labels = paste(levels(test.list.single.balance[[name]]$Batch),":",table(test.list.single.balance[[name]]$Batch))) + coord_fixed() + labs(subtitle =  sprintf("cms %.2f; lisi %.2f",mean(test.list.single.balance[[name]]$cms_smooth),mean(test.list.single.balance[[name]]$isi))
 ) & ggtitle(name) & theme(aspect.ratio=1)  | visHist(test.list.single.balance[[name]],metric = c("cms"))
@@ -227,7 +229,6 @@ test.list.single.balance.metrics.balance %>% pivot_longer(cols=c("cms","lisi")) 
 ```
 
 Mean cms and lisi peak at equal batch size. Both metrics are strongly affected by batch size unbalance. The larger the unbalance, the lower cms/lisi.
-
 
 
 # Batches of heterogeneous cell type composition
@@ -282,7 +283,7 @@ plotSimul(test.list[["overcorrected"]])
 ```
 If we applied an integration method that 'overcorrects' (ie that removes batch effect very strongly at the expense of also removing biological signal), all cells from different batches are perfectly mixed, irrespective of the cell type .
 
-In this situation, cms and lisi further increase, indicating better batch mixig, irrespective of the non preservation of biological variation.
+In this situation, cms and lisi further increase, indicating better batch mixing, irrespective of the non preservation of biological variation.
 
 Now, because cells of different type mix with each other, cluster_cms and cluster_lisi strongly increase
 
@@ -291,7 +292,7 @@ In this case, increase of cms/lisi is associated with overcorrection and loss of
 
 
 
-```{r, fig.width=5, fig.height=10}
+```{r, message=F, warning=F, fig.width=20, fig.height=20}
 
 plot.list <- lapply(names(test.list),function(name){
   plotSimul(test.list[[name]]) & ggtitle(name) & theme(aspect.ratio=1) | visHist(test.list[[name]],metric = c("cms"))
