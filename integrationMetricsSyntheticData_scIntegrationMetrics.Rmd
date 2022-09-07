@@ -39,11 +39,6 @@ install_github("carmonalab/scIntegrationMetrics") #calculates LISI and Silhouett
 if (!requireNamespace("BiocManager"))
     install.packages("BiocManager")
 
-if (!requireNamespace("CellMixS"))
-  BiocManager::install("CellMixS")
-
-if (!requireNamespace("CellMixS"))
-  BiocManager::install("splatter")
 
 ```
 
@@ -54,10 +49,7 @@ library(ggplot2)
 library(tidyr)
 library(scIntegrationMetrics)
 library(patchwork)
-library(CellMixS)
-library(splatter)
 library(Seurat)
-library(BiocParallel)
 
 seed = 1234
 set.seed(seed)
@@ -74,33 +66,6 @@ suppressPackageStartupMessages({
 })
 ```
 
-
-
-
-```{r}
-# splits data by split_by and calculates normalized lisi in each subset
-compute_lisi_splitBy <- function (X, meta_data, label_colnames, split_by_colname, normalize=T, ...){
-   
-  X.list <- split.data.frame(X,meta_data[,split_by_colname])
-  meta_data.list <- split.data.frame(meta_data,meta_data[,split_by_colname])
-    
-  X.list.list <- lapply(seq_along(X.list), function(i) {
-    x <- X.list[[i]]
-    m <- meta_data.list[[i]]
-    x.lisi <- compute_lisi(x, m, label_colnames=label_colnames, ... )
-    if(normalize){
-      label_colnames_levels <- apply(m[,label_colnames,drop=F],2,function(x) length(unique(x)))
-      x.lisi <- t(t(x.lisi-1)*(label_colnames_levels-1))
-    }
-    message("Processing group ",unique(m[,split_by_colname]))
-    return(x.lisi)
-  })
-  names(X.list.list) <- unique(meta_data[,split_by_colname])
-  return(X.list.list)
-}
-  
-  
-```
 
 
 ```{r}
@@ -243,7 +208,7 @@ metricsShow <- c("batch_nLISI", "batch_nLISI_perCellType", "batch_nLISI_perCellT
 ```
 
 
-```{r, fig.width=6, fig.height=4}
+```{r, fig.width=12, fig.height=5}
 plot.list <- list()
 
 metricsShow.batch <- grep("batch",metricsShow,value = T)
@@ -290,7 +255,7 @@ for (method in names(object.list)) {
 
 # Summary of Integration Metrics
 
-```{r, fig.height=4, fig.width=3}
+```{r, fig.height=8, fig.width=8}
 
 integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) %>% tibble::rownames_to_column() %>% dplyr::rename(value=unlist.integrationMetrics.) %>% separate(rowname, c("Method","Metric"), sep="\\.")
 
@@ -301,7 +266,7 @@ ggplot(integrationMetricsSummary,aes(x=reorder(Method,-value), y=value, fill=Met
 ```
 
 
-```{r fig.height=5, fig.width=5}
+```{r fig.height=10, fig.width=10}
 p <- wrap_plots(lapply(plot.list,wrap_plots),ncol=2)
 p & theme(legend.position = "none")
 #ggsave("compareMetrics.umap.png",p, width = 30, height = 30)
