@@ -74,6 +74,8 @@ Load synthetic datasets (batch effects + different subtype composition) to evalu
 
 ```{r}
 object.list <- readRDS("batchCellTypes.synthetic.seurat.rds")
+#object.list <- readRDS("batchBalance.synthetic.seurat.rds")
+#object.list <- readRDS("batchEffect.synthetic.seurat.rds")
 ```
 
 
@@ -89,7 +91,7 @@ Set critical parameters
 ```{r}
 nfeatures <- 500 # number of highly variable genes for dimensionality reduction
 ndim <- 2 # number of PCA components for dimensionality reduction 
-lisi_perplexity <- 20 # number of neighbors for LISI (see below for details) to measure batch mixing
+lisi_perplexity <- 30 # number of neighbors for LISI (see below for details) to measure batch mixing
 ```
 
 
@@ -119,34 +121,31 @@ batchLabels.table
 ```
 
 ```{r}
-integrationMetrics <- list()
-
 method = "synthetic2celltypes"
 method.reduction <- "pca"
-metricsObject <- object
 
-metrics <- c("batch_nLISI", "batch_nLISI_perCellType", "batch_nLISI_perCellType_means", 
+metrics <- c("batch_LISI","batch_nLISI", "batch_nLISI_perCellType", "batch_nLISI_perCellType_means", 
 "celltype_nLISI", "celltype_nLISI_means", "celltype_ASW", "celltype_ASW_means")
 
-integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, metrics = metrics, meta.label, meta.batch, lisi_perplexity, method.reduction, metricsLabels = c("Group1","Group2")) 
+getIntegrationMetrics(object, meta.label = meta.label, meta.batch = meta.batch, method.reduction = method.reduction, lisi_perplexity = lisi_perplexity, metrics = metrics) 
 
-integrationMetrics
 ```
 
 
 Now let's do it for each dataset
 ```{r}
-
 metrics <- NULL # by default, calculate all available metrics
 
-integrationMetrics <- lapply(object.list,function(metricsObject){
- getIntegrationMetrics(metricsObject, metrics = metrics, meta.label, meta.batch, lisi_perplexity, method.reduction)
+integrationMetrics <- list()
+
+integrationMetrics <- lapply(object.list,function(object){
+ getIntegrationMetrics(object, metrics = metrics, meta.label, meta.batch, lisi_perplexity, method.reduction)
 })
 ```
 
 
 
-```{r, fig.width=8, fig.height=8}
+```{r, fig.width=5, fig.height=5}
 plot.list <- list()
 
 metricsShow.batch <- grep("batch",names(integrationMetrics[[1]]),value = T)
@@ -156,13 +155,13 @@ metricsShow.celltype <- grep("celltype",names(integrationMetrics[[1]]),value = T
 
 
 for (method in names(object.list)) {
-  metricsObject <- object.list[[method]]
+  object <- object.list[[method]]
 
   metricsShow.batch.caption <- paste(metricsShow.batch,round(as.numeric(integrationMetrics[[method]][metricsShow.batch]),2),collapse = "\n ")
   metricsShow.celltype.caption <- paste(metricsShow.celltype,round(as.numeric(integrationMetrics[[method]][metricsShow.celltype]),2),collapse = "\n ")
     
   plot.list[[method]][["batch"]] <-
-    DimPlot(metricsObject, group.by = meta.batch, reduction = "pca") + theme(aspect.ratio = 1) + labs(
+    DimPlot(object, group.by = meta.batch, reduction = "pca") + theme(aspect.ratio = 1) + labs(
       subtitle = "Dataset/batch",
       title = method,
       caption = metricsShow.batch.caption
@@ -170,7 +169,7 @@ for (method in names(object.list)) {
   
   plot.list[[method]][["label"]] <-
     DimPlot(
-      metricsObject,
+      object,
       group.by = meta.label,
       label = T,
       label.size = 4,
@@ -195,7 +194,7 @@ for (method in names(object.list)) {
 
 ```{r, fig.height=8, fig.width=8}
 
-integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) %>% tibble::rownames_to_column() %>% dplyr::rename(value=unlist.integrationMetrics.) %>% separate(rowname, c("Method","Metric"), sep="\\.")
+integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) %>% tibble::rownames_to_column() %>% dplyr::rename(value=unlist.integrationMetrics.) %>% separate(rowname, c("Method","Metric"), sep="\\.") #\\.[[:alpha:]]
 
 ggplot(integrationMetricsSummary,aes(x=reorder(Method,-value), y=value, fill=Method)) + geom_bar(stat="identity") + 
     theme_bw() + 
