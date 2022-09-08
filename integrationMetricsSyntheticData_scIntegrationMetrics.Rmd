@@ -10,7 +10,7 @@ output:
 knit: (function(input_file, encoding) {
   out_dir <- 'docs';
   rmarkdown::render(input_file, encoding=encoding,
- output_file=file.path(dirname(input_file), out_dir, 'test_CellMixS.html'))})
+ output_file=file.path(dirname(input_file), out_dir, 'test_metrics_syntheticData.html'))})
 ---
 
 # Introduction
@@ -68,52 +68,159 @@ suppressPackageStartupMessages({
 
 
 
-```{r}
-getIntegrationMetrics <- function(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction, metricsLabels=NULL){
-
-integrationMetrics <- list()
-
-if(is.null(metricsLabels)) metricsLabels <- levels(metricsObject@meta.data[[meta.label]])
-message(paste("Cell type labels:",paste(metricsLabels,collapse = ",")))
+```{r, eval=F}
+getIntegrationMetrics <-
+  function(object,
+           metrics=NULL,
+           meta.label,
+           meta.batch,
+           lisi_perplexity,
+           method.reduction,
+           metricsLabels = NULL) {
+    # check input parameters
+    metricsAvailable <-
+      c(
+        "batch_LISI",
+        "batch_nLISI",
+        "batch_nLISI_means",
+        "batch_nLISI_perCellType",
+        "batch_nLISI_perCellType_means",
+        "celltype_nLISI",
+        "celltype_nLISI_means",
+        "celltype_ASW",
+        "celltype_ASW_means"
+      )
     
-metricsLabels_logic <- metricsObject@meta.data[[meta.label]] %in% metricsLabels
-batchNames <- levels(metricsObject@meta.data[[meta.batch]])
-message(paste("Batches:",paste(batchNames,collapse = ",")))
-
-#batch lisi
-lisi.this <- compute_lisi(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity)[[1]]
-
-lisi.this.normalized <- (lisi.this-1)/(length(batchNames)-1)
-
-integrationMetrics[["batch_nLISI"]] <- mean(lisi.this.normalized[metricsLabels_logic]) 
-#integrationMetrics[["batch_nLISI_means"]] <- mean(tapply(lisi.this.normalized,metricsObject@meta.data[[meta.label]],mean)[metricsLabels]) #means per cell type
-
-#batch lisi per celltype 
-lisi_splitByCelltype <- compute_lisi_splitBy(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity, split_by_colname=meta.label, normalize = T)
-
-integrationMetrics[["batch_nLISI_perCellType"]] <- mean(unlist(lisi_splitByCelltype))
-classMeans <- sapply(lisi_splitByCelltype,mean)
-message("batch_nLISI_perCellType: ",paste(names(lisi_splitByCelltype),round(classMeans,2)," "))
-integrationMetrics[["batch_nLISI_perCellType_means"]] <- mean(classMeans)
-
-#cluster/celltype lisi
-lisi.this <- compute_lisi(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.label, perplexity = lisi_perplexity)[[1]]
-
-lisi.this.normalized <- (lisi.this-1)/(length(metricsLabels)-1)
-
-integrationMetrics[["celltype_nLISI"]] <- mean(lisi.this.normalized[metricsLabels_logic]) 
-integrationMetrics[["celltype_nLISI_means"]] <- mean(tapply(lisi.this.normalized,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
-
-# silhouette
-
-sil.this <- compute_silhouette(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.label)[[1]]
-
-integrationMetrics[["celltype_ASW"]] <- mean(sil.this[metricsLabels_logic])
-integrationMetrics[["celltype_ASW_means"]] <- mean(tapply(sil.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
-
-return(integrationMetrics)
-
-}
+    if(is.null(metrics)) {metrics <- metricsAvailable }
+    if (!all(metrics %in% metricsAvailable)) {
+      stop(
+        "Error: 'metrics' is unknown. Please define one or more of 'batch_LISI', 'batch_nLISI', 'batch_nLISI_means', 'batch_nLISI_perCellType', 'batch_nLISI_perCellType_means','celltype_nLISI', 'celltype_nLISI_means', 'celltype_ASW', 'celltype_ASW_means', or leave 'NULL' to calculate them all"
+      )
+    }
+    
+    if (!is(object, "Seurat")) {
+      stop("Error: 'object' must be a 'Seurat' object.")
+    }
+    
+    integrationMetrics <- list()
+    
+    if (is.null(metricsLabels))
+      metricsLabels <- levels(object@meta.data[[meta.label]])
+    
+    message(paste("Cell type labels:", paste(metricsLabels, collapse = ",")))
+    
+    metricsLabels_logic <-
+      object@meta.data[[meta.label]] %in% metricsLabels
+    batchNames <- levels(object@meta.data[[meta.batch]])
+    
+    message(paste("Batches:", paste(batchNames, collapse = ",")))
+    
+    
+    #batch lisi
+    if (any(c("batch_LISI", "batch_nLISI", "batch_nLISI_means") %in% metrics)) {
+      lisi.this <-
+        compute_lisi(
+          object@reductions[[method.reduction]]@cell.embeddings,
+          meta_data = object@meta.data,
+          label_colnames = meta.batch,
+          perplexity = lisi_perplexity
+        )[[1]]
+      
+      if ("batch_LISI" %in% metrics) {
+        integrationMetrics[["batch_LISI"]] <-
+          mean(lisi.this[metricsLabels_logic])
+        
+      }
+      
+      if ("batch_nLISI" %in% metrics) {
+        lisi.this.normalized <- (lisi.this - 1) / (length(batchNames) - 1)
+        
+        integrationMetrics[["batch_nLISI"]] <-
+          mean(lisi.this.normalized[metricsLabels_logic])
+        
+        if ("batch_nLISI_means" %in% metrics) {
+          integrationMetrics[["batch_nLISI_means"]] <-
+            mean(tapply(lisi.this.normalized, object@meta.data[[meta.label]], mean)[metricsLabels]) #means per cell type
+          
+        }
+      }
+    }
+    
+    #batch lisi per celltype
+    
+    
+    if (any(c(
+      "batch_nLISI_perCellType",
+      "batch_nLISI_perCellType_means"
+    ) %in% metrics)) {
+      lisi_splitByCelltype <-
+        compute_lisi_splitBy(
+          object@reductions[[method.reduction]]@cell.embeddings,
+          meta_data = object@meta.data,
+          label_colnames = meta.batch,
+          perplexity = lisi_perplexity,
+          split_by_colname = meta.label,
+          normalize = T
+        )
+      
+      if ("batch_nLISI_perCellType" %in% metrics) {
+        integrationMetrics[["batch_nLISI_perCellType"]] <-
+          mean(unlist(lisi_splitByCelltype)[metricsLabels_logic])
+      }
+      if ("batch_nLISI_perCellType_means" %in% metrics) {
+        classMeans <- sapply(lisi_splitByCelltype, mean)[metricsLabels]
+        message("batch_nLISI_perCellType: ", paste(names(lisi_splitByCelltype), round(classMeans, 2), " "))
+        integrationMetrics[["batch_nLISI_perCellType_means"]] <-
+          mean(classMeans)
+      }
+    }
+    
+    #cluster/celltype lisi
+    if (any(c("celltype_nLISI", "celltype_nLISI_means") %in% metrics)) {
+      lisi.this <-
+        compute_lisi(
+          object@reductions[[method.reduction]]@cell.embeddings,
+          meta_data = object@meta.data,
+          label_colnames = meta.label,
+          perplexity = lisi_perplexity
+        )[[1]]
+      
+      lisi.this.normalized <-
+        (lisi.this - 1) / (length(metricsLabels) - 1)
+      
+      if ("celltype_nLISI" %in% metrics) {
+        integrationMetrics[["celltype_nLISI"]] <-
+          mean(lisi.this.normalized[metricsLabels_logic])
+      }
+      
+      if ("celltype_nLISI_means" %in% metrics) {
+        integrationMetrics[["celltype_nLISI_means"]] <-
+          mean(tapply(lisi.this.normalized, object@meta.data[[meta.label]], mean)[metricsLabels])
+      }
+    }
+    
+    # silhouette
+    if (any(c("celltype_ASW", "celltype_ASW_means") %in% metrics)) {
+      sil.this <-
+        compute_silhouette(
+          object@reductions[[method.reduction]]@cell.embeddings,
+          meta_data = object@meta.data,
+          label_colnames = meta.label
+        )[[1]]
+      
+      if ("celltype_ASW" %in% metrics) {
+        integrationMetrics[["celltype_ASW"]] <-
+          mean(sil.this[metricsLabels_logic])
+      }
+      if ("celltype_ASW_means" %in% metrics) {
+        integrationMetrics[["celltype_ASW_means"]] <-
+          mean(tapply(sil.this, object@meta.data[[meta.label]], mean)[metricsLabels])
+      }
+    }
+    
+    return(integrationMetrics)
+    
+  }
 ```
 
 
@@ -187,41 +294,43 @@ metricsLabels <- setdiff(unique(object@meta.data[[meta.label]]),removeLabels)
 ```{r}
 integrationMetrics <- list()
 
-method = "uncorrected"
+method = "synthetic2celltypes"
 method.reduction <- "pca"
 metricsObject <- object
 
-integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction, metricsLabels = metricsLabels)
+metrics <- c("batch_nLISI", "batch_nLISI_perCellType", "batch_nLISI_perCellType_means", 
+"celltype_nLISI", "celltype_nLISI_means", "celltype_ASW", "celltype_ASW_means")
+
+integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, metrics = metrics, meta.label, meta.batch, lisi_perplexity, method.reduction, metricsLabels = metricsLabels) 
 ```
 
 
 Now let's do it for each dataset
 ```{r}
 
+metrics <- NULL # by default, calculate all available metrics
+
 integrationMetrics <- lapply(object.list,function(metricsObject){
- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction, metricsLabels = metricsLabels)
+ getIntegrationMetrics(metricsObject, metrics = metrics, meta.label, meta.batch, lisi_perplexity, method.reduction, metricsLabels = metricsLabels)
 })
 ```
-```{r}
-metricsShow <- c("batch_nLISI", "batch_nLISI_perCellType", "batch_nLISI_perCellType_means", 
-"celltype_nLISI", "celltype_nLISI_means", "celltype_ASW", "celltype_ASW_means")
-```
 
 
-```{r, fig.width=12, fig.height=5}
+
+```{r, fig.width=8, fig.height=8}
 plot.list <- list()
 
-metricsShow.batch <- grep("batch",metricsShow,value = T)
+metricsShow.batch <- grep("batch",names(integrationMetrics[[1]]),value = T)
 
-metricsShow.celltype <- grep("celltype",metricsShow,value = T)
+metricsShow.celltype <- grep("celltype",names(integrationMetrics[[1]]),value = T)
 
 
 
 for (method in names(object.list)) {
   metricsObject <- object.list[[method]]
 
-  metricsShow.batch.caption <- paste(metricsShow.batch,round(as.numeric(integrationMetrics[[method]][metricsShow.batch]),2),collapse = "; ")
-  metricsShow.celltype.caption <- paste(metricsShow.celltype,round(as.numeric(integrationMetrics[[method]][metricsShow.celltype]),2),collapse = "; ")
+  metricsShow.batch.caption <- paste(metricsShow.batch,round(as.numeric(integrationMetrics[[method]][metricsShow.batch]),2),collapse = "\n ")
+  metricsShow.celltype.caption <- paste(metricsShow.celltype,round(as.numeric(integrationMetrics[[method]][metricsShow.celltype]),2),collapse = "\n ")
     
   plot.list[[method]][["batch"]] <-
     DimPlot(metricsObject, group.by = meta.batch, reduction = "pca") + theme(aspect.ratio = 1) + labs(
