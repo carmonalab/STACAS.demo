@@ -42,7 +42,7 @@ if (!requireNamespace("BiocManager"))
 if (!requireNamespace("CellMixS"))
   BiocManager::install("CellMixS")
 
-if (!requireNamespace("CellMixS"))
+if (!requireNamespace("splatter"))
   BiocManager::install("splatter")
 
 ```
@@ -76,21 +76,22 @@ suppressPackageStartupMessages({
 
 Prepare extreme heterogeneous datasets (batch effects + different subtype composition) to evaluate metrics
 
+The following function will generate synthetic datasets, in two possible modes:
+
+* mode `twoGroups=FALSE`: will generate 2 batches with 1 cell type
+
+* mode `twoGroups=TRUE`: will generate 3 batches including two cell types/groups:
+  - Batch 1: contains cell types A and B with equal proportions
+  - Batch 2: contains only cell type A (cells Group 1)
+  - Batch 3: contains only cell type B (cells Group 2)
+
+Batch 1 contains a frequency of `freqBatchAB` of total cells; and the rest are equally divided between Batches 2 and 3.
+
 ```{r}
-
-# The next function will generate synthetic datasets, in two possible modes:
-# mode twoGroups=T
-# will generate 3 batches including two cell types/groups
-# Batch 1: contains cell types A and B with equal proportions
-# Batch 2: contains only cell type A (cells Group 1)
-# Batch 3: contains only cell type B (cells Group 2)
-# Batch 1 contains a frequency of `freqBatchAB` of total cells; and the rest are equally devided between Batches 2 and 3.
-#
-# mode twoGroups=F
-# will generate 2 baches with 1 cell type
-# then will evaluate a number of metrics from the CellMixS Bioconductor package
-
-simulateAndMeasure <- function(ncellsTotal, freqBatchAB, freqBatchA=NULL, twoGroups=T, de.facLoc=0.2, de.facScale=0.2, batch.facScale=0, batch.facLoc=0, mySeed=123, k=20, cell_min=10, batch_min=NULL, ncores=8){
+simulateAndMeasure <- function(ncellsTotal, freqBatchAB, freqBatchA=NULL,
+                               twoGroups=T, de.facLoc=0.2, de.facScale=0.2,
+                               batch.facScale=0, batch.facLoc=0, mySeed=123,
+                               k=20, cell_min=10, batch_min=NULL, ncores=8){
   
 if(is.null(freqBatchA)) {
   freqBatchA <- (1-freqBatchAB)/2
@@ -100,12 +101,19 @@ if(is.null(freqBatchA)) {
 if (twoGroups){
   group.prob <- 0.5 # cell type A frequency; avoid group.prob close to 0 or 1
   batchCells <- round(c(freqBatchAB,freqBatchA/group.prob,freqBatchB/(1-group.prob))*ncellsTotal)
-  test <- splatSimulate(batchCells = batchCells, group.prob = c(group.prob, 1-group.prob), method = "groups", verbose = FALSE, de.facLoc=de.facLoc, de.facScale=de.facScale, batch.facScale= batch.facScale, batch.facLoc=batch.facLoc ) # see ?SplatParams  de.facLoc=0.2, de.facScale=0.2
+  
+  test <- splatSimulate(batchCells = batchCells, group.prob = c(group.prob, 1-group.prob),
+                        method = "groups", verbose = FALSE, de.facLoc=de.facLoc,
+                        de.facScale=de.facScale, batch.facScale= batch.facScale,
+                        batch.facLoc=batch.facLoc ) # see ?SplatParams  de.facLoc=0.2, de.facScale=0.2
+  
   test <- test[,!(test$Batch=="Batch2" & test$Group=="Group1")]
   test <-  test[,!(test$Batch=="Batch3" & test$Group=="Group2")]
 } else {
   batchCells <- round(c(freqBatchAB,1-freqBatchAB)*ncellsTotal)
-  test <- splatSimulate(batchCells = batchCells, verbose = FALSE, de.facLoc=de.facLoc, de.facScale=de.facScale, batch.facScale= batch.facScale, batch.facLoc=batch.facLoc )
+  test <- splatSimulate(batchCells = batchCells, verbose = FALSE,
+                        de.facLoc=de.facLoc, de.facScale=de.facScale,
+                        batch.facScale= batch.facScale, batch.facLoc=batch.facLoc )
   test$Group <- "Group1"
 }
   
@@ -114,11 +122,19 @@ set.seed(mySeed)
 print(table(test$Group,test$Batch))
 test <- logNormCounts(test)
 test <- runPCA(test, ncomponents = 2, ntop=500)
-#test <- evalIntegration(test, metrics = c("isi", "cms","mixingMetric","entropy"), group = "Batch", k = k, n_dim = 2, cell_min = cell_min, weight = F, BPPARAM=MulticoreParam(workers=ncores))
-test <- evalIntegration(test, metrics = c("isi", "cms"), group = "Batch", k = k, n_dim = 2, cell_min = cell_min, weight = F, batch_min = batch_min, BPPARAM=MulticoreParam(workers=ncores))
+
+test <- evalIntegration(test, metrics = c("isi", "cms"),
+                        group = "Batch", k = k, n_dim = 2,
+                        cell_min = cell_min, weight = F,
+                        batch_min = batch_min,
+                        BPPARAM=MulticoreParam(workers=ncores))
 
 if(twoGroups){
-test <- evalIntegration(test, metrics = c("isi", "cms"), group = "Group", k = k, n_dim = 2, cell_min = cell_min, weight = F, batch_min = batch_min, BPPARAM=MulticoreParam(workers=ncores), res_name = c("cluster_lisi", "cluster_cms"))
+test <- evalIntegration(test, metrics = c("isi", "cms"),
+                        group = "Group", k = k, n_dim = 2,
+                        cell_min = cell_min, weight = F, batch_min = batch_min,
+                        BPPARAM=MulticoreParam(workers=ncores),
+                        res_name = c("cluster_lisi", "cluster_cms"))
 }
 
 return(test)
@@ -127,16 +143,24 @@ return(test)
 ```
 
 
-
-
 ```{r}
 # plot pca and metrics
 plotSimul <- function(test){
-  plotPCA(test, shape_by = "Group", colour_by = "Batch") + scale_color_discrete(labels = paste(levels(test$Batch),":",table(test$Batch))) + coord_fixed() + labs(subtitle =  sprintf("cms %.2f; lisi %.2f; cluster_cms %.2f; cluster_lisi %.2f",mean(test$cms_smooth),mean(test$isi),mean(test$cms_smooth.cluster_cms),mean(test$cluster_lisi)),
-) | plotPCA(test, shape_by = "Batch", colour_by = "Group") + coord_fixed()
+  lab <- sprintf("cms %.2f; lisi %.2f; cluster_cms %.2f; cluster_lisi %.2f",
+                 mean(test$cms_smooth),mean(test$isi),
+                 mean(test$cms_smooth.cluster_cms),
+                 mean(test$cluster_lisi))
+  a <- plotPCA(test, shape_by = "Group", colour_by = "Batch") + 
+    scale_color_discrete(labels = paste(levels(test$Batch),":",table(test$Batch))) + 
+    coord_fixed() + 
+    labs(subtitle = lab)
+  b <- plotPCA(test, shape_by = "Batch", colour_by = "Group") + coord_fixed()
+  a | b
 }
 
 ```
+
+With the wrapper functions defined above, we will  evaluate a number of metrics implemented in the CellMixS Bioconductor package
 
 
 # Set parameters

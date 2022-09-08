@@ -36,7 +36,7 @@ if (!requireNamespace("STACAS", quietly = TRUE))
   remotes::install_github("carmonalab/STACAS")
 
 if (!requireNamespace("harmony", quietly = TRUE))
-  remotes::install_github("immunogenomics/harmony")
+  remotes::install_github("immunogenomics/harmony", ref="6866e01") #fix version at Sep 8, 2022
 
 if (!requireNamespace("SeuratWrappers", quietly = TRUE))
 remotes::install_github('satijalab/seurat-wrappers')
@@ -77,7 +77,7 @@ set.seed(seed)
 
 A merged dataset is available as a Seurat object
 ```{r}
-download <- F
+download <- T
 where <- 'aux'
 dir.create(where, showWarnings = FALSE)
 
@@ -107,7 +107,7 @@ batchLabels.table
 ```
 
 For integration metrics, do not consider labels that are contributed in more than `thrMaxPerBatch` (90%) by a single dataset/batch.
-Additionally, at least `minBatchesPerCellType` (2) datasets have to contribute with at least `thrMinPerBatch` (5%) each. Then number of datasets over this threshold can be used to normalized LISI scores per label.
+Additionally, at least `minBatchesPerCellType` (2) datasets have to contribute with at least `thrMinPerBatch` (5%) each. Then number of datasets over this threshold can be used to calculate normalized LISI scores per label.
 
 ```{r}
 batchLabels <- round( batchLabels.table / rowSums(batchLabels.table) * 100) 
@@ -120,7 +120,10 @@ thrMinPerBatch <- 5
 ```{r}
 bachesPerLabel <- apply(batchLabels,1,function(x) sum(x > thrMinPerBatch) )
 removeLabels <- names(bachesPerLabel[bachesPerLabel < minBatchesPerCellType ])
-removeLabels <- unique(removeLabels,names(which(apply(batchLabels, 1, function(x) max(x) > thrMaxPerBatch) ))) #  contributed in more than 90% by a single dataset/batch
+removeLabels <- unique(removeLabels, 
+                       names(which(apply(
+                         batchLabels, 1, function(x) max(x) > thrMaxPerBatch) 
+                         ))) #  contributed in more than 90% by a single dataset/batch
 removeLabels
 metricsLabels <- setdiff(unique(object@meta.data[[meta.label]]),removeLabels)
 ```
@@ -137,18 +140,27 @@ lisi_perplexity <- 30 # number of neighbors for LISI (see below for details) to 
 
 How does the collection of datasets look without any integration?
 
-Run a standard Seurat pipeline for dimensionality reduction
+Run a standard Seurat pipeline for dimensionality reduction.
+
 
 ```{r, eval=F}
 library(data.table)
-ensembleRef <- "aux/EnsemblGenes105_Mmu_GRCm39.txt.gz" #"https://github.com/carmonalab/scRNAseq_data_processing/blob/master/aux/EnsemblGenes105_Mmu_GRCm39.txt.gz
+
+#The table of standard genes in Ensembl can be download from [this link](https://github.com/carmonalab/scRNAseq_data_processing/blob/master/aux/EnsemblGenes105_Mmu_GRCm39.txt.gz)
+
+
+ensembleRef <- "aux/EnsemblGenes105_Mmu_GRCm39.txt.gz"
+
 object@assays$RNA@counts <- object@assays$RNA@data
+
 object <- STACAS:::standardizeGeneSymbols(obj = object, EnsemblGeneFile=ensembleRef)
 ```
 
 ```{r message=F, warning=F,results=F}
-#object <- NormalizeData(object,normalization.method = "LogNormalize", scale.factor = 10000) # these data are pre-normalized
-object <- FindVariableFeatures(object, nfeatures = nfeatures) %>% ScaleData() %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
+object <- FindVariableFeatures(object, nfeatures = nfeatures) %>%
+  ScaleData() %>%
+  RunPCA(npcs=ndim) %>%
+  RunUMAP(dims=1:ndim)
 ```
 
 ```{r}
