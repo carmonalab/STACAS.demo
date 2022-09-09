@@ -48,6 +48,9 @@ BiocManager::install("batchelor")
 if (!require("tidyr", quietly = TRUE))
 install.packages("tidyr")
 
+if (!require("tidytext", quietly = TRUE))
+install.packages("tidytext")
+
 if (!require("scIntegrationMetrics", quietly = TRUE))
 install_github("carmonalab/scIntegrationMetrics") #calculates LISI and Silhouette
 
@@ -63,6 +66,7 @@ library(harmony)
 library(SeuratWrappers)
 library(batchelor)
 library(tidyr)
+library(tidytext)
 library(scIntegrationMetrics)
 library(patchwork)
 
@@ -149,110 +153,54 @@ object <- STACAS:::standardizeGeneSymbols(obj = object, EnsemblGeneFile=ensemble
 object <- FindVariableFeatures(object, nfeatures = nfeatures) %>% ScaleData() %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
 ```
 
-Let's quantify dataset/batch mixing using the [LISI metric](https://github.com/immunogenomics/LISI) and conservation of biological information by means of Average Silhouette Width (ASW) of cell labels in the PCA space
-
-```{r}
-compute_lisi_splitByClass <- function(object, method.reduction, meta.batch, meta.label, labels.use=NULL, minCellPercPerClass=5, ...){
-  
-  object.list <- SplitObject(object, split.by = meta.label)
-  
-  if(!is.null(labels.use)) {  
-    object.list <- object.list[labels.use] 
-  }
-  
-  lisi.list <- list()
-  #message("Percentage of label contributed by batch: ")
-  for ( i in seq_len(length(object.list))){
-    
-    this.class <- names(object.list)[[i]]
-    
-    t <- table(object.list[[i]]@meta.data[[meta.batch]])
-    t.norm <- t/sum(t)*100
-    
-    batchNum <- length(t)
-    cellPerBatchEqual <- 100/batchNum
-    #message(paste(this.class,round(t.norm,2)," "))
-    
-    batch.use.here <- names(t[t.norm > min(minCellPercPerClass,cellPerBatchEqual)]) # which batches contribute with at least `minCellPercPerClass` or the expected number of cells if all batches were of same size?
-    
-    message("Nr. batches for ",this.class,":",paste(length(batch.use.here)))
-    
-    if (length(batch.use.here)<2) {
-      message(sprintf("skipping %s not sufficiently represented in more than a single batch",this.class))
-      next
-    }
-    
-    lisi.this <- compute_lisi(object.list[[i]]@reductions[[method.reduction]]@cell.embeddings, meta_data = object.list[[i]]@meta.data, label_colnames=meta.batch, ...)[[1]]
-    lisi.this.normalized <- (lisi.this-1)/(length(batch.use.here)-1)
-    lisi.list[[i]] <- lisi.this.normalized
-    
-  }
-  
-  names(lisi.list) <- names(object.list)
-  #lisi.list <- lisi.list[-which(sapply(lisi.list,is.null))]
-  lisi.list <- lisi.list[!(sapply(lisi.list,is.null))]
-
-  return(lisi.list)
-}
-  
-```
-
-
-```{r}
-getIntegrationMetrics <- function(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction){
-
-integrationMetrics <- list()
-
-metricsLabels_logic <- metricsObject@meta.data[[meta.label]] %in% metricsLabels
-
-lisi.this <- compute_lisi(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.batch, perplexity = lisi_perplexity)[[1]]
-
-lisi.this.normalized <- (lisi.this-1)/(length(metricsLabels)-1)
-
-#integrationMetrics[["batch_LISI"]] <- mean(lisi.this[metricsLabels_logic]) 
-#integrationMetrics[["batch_LISI_means"]] <- mean(tapply(lisi.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
-
-integrationMetrics[["batch_LISI"]] <- mean(lisi.this.normalized[metricsLabels_logic]) 
-integrationMetrics[["batch_LISI_means"]] <- mean(tapply(lisi.this.normalized,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
-
-lisi_splitByClass <- compute_lisi_splitByClass(metricsObject, method.reduction = method.reduction, meta.label = meta.label, meta.batch = meta.batch, perplexity=lisi_perplexity)
-
-integrationMetrics[["batch_LISI_perCellType"]] <- mean(unlist(lisi_splitByClass))
-
-classMeans <- round(sapply(lisi_splitByClass,mean),2)
-
-message(paste(names(lisi_splitByClass),classMeans," "))
-
-integrationMetrics[["batch_LISI_perCellType_means"]] <- mean(classMeans)
-
-sil.this <- compute_silhouette(metricsObject@reductions[[method.reduction]]@cell.embeddings, meta_data = metricsObject@meta.data, label_colnames=meta.label)[[1]]
-
-integrationMetrics[["celltype_ASW"]] <- mean(sil.this[metricsLabels_logic])
-integrationMetrics[["celltype_ASW_means"]] <- mean(tapply(sil.this,metricsObject@meta.data[[meta.label]],mean)[metricsLabels])
-
-integrationMetrics
-
-}
-```
-
 ```{r}
 integrationMetrics <- list()
+useMetrics <- c("batch_LISI","batch_nLISI", "batch_nLISI_perCellType", "batch_nLISI_perCellType_means", 
+"1-celltype_nLISI", "1-celltype_nLISI_means", "celltype_ASW", "celltype_ASW_means")
 
 method = "uncorrected"
 method.reduction <- "pca"
 metricsObject <- object
 
-integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
+integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject, metrics = useMetrics, meta.label = meta.label, meta.batch = meta.batch, lisi_perplexity = lisi_perplexity, method.reduction = method.reduction, metricsLabels = metricsLabels)
+
 ```
 
-```{r fig.height=8, fig.width=16}
+
+Set up plot parameters
+```{r}
 plot.list <- list()
-plot.list[[method]][["batch"]] <- DimPlot(metricsObject, group.by = meta.batch, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Dataset/batch", title = method, caption = sprintf("batch_LISI %.2f",integrationMetrics[[method]][["batch_LISI"]]))
-plot.list[[method]][["label"]] <- DimPlot(metricsObject, group.by = meta.label, label=T, label.size = 4, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Cell labels", title = method, caption = sprintf("ASW %.2f; ASW_meanOfMeans %.2f",integrationMetrics[[method]][["celltype_ASW"]],integrationMetrics[[method]][["celltype_ASW_means"]]))
-
-
-plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
+metricsShow.batch <- grep("batch",names(integrationMetrics[[1]]),value = T)
+metricsShow.celltype <- grep("celltype",names(integrationMetrics[[1]]),value = T)
 ```
+
+```{r}
+
+plotIntegrationMetricsDim <- function(plot.list, metricsShow.batch, metricsShow.celltype, reduction="umap", plot=T){
+
+metricsShow.batch.caption <- paste(metricsShow.batch,round(as.numeric(integrationMetrics[[method]][metricsShow.batch]),2),collapse = "\n ")
+metricsShow.celltype.caption <- paste(metricsShow.celltype,round(as.numeric(integrationMetrics[[method]][metricsShow.celltype]),2),collapse = "\n ")
+  
+plot.list[[method]][["batch"]] <- DimPlot(metricsObject, group.by = meta.batch, reduction = reduction) + theme(aspect.ratio = 1) + labs(subtitle = "Dataset/batch", title = method, caption = metricsShow.batch.caption)
+
+plot.list[[method]][["label"]] <- DimPlot(metricsObject, group.by = meta.label, label=T, label.size = 4, reduction = reduction) + theme(aspect.ratio = 1) + labs(subtitle = "Cell labels", title = method, caption = metricsShow.celltype.caption)
+
+
+if(plot) print(plot.list[[method]][["batch"]] | plot.list[[method]][["label"]])
+
+return(plot.list)
+
+} 
+
+```
+
+```{r fig.height=6, fig.width=6}
+
+plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.celltype)
+
+```
+
+
 Clusters are largely driven by study/batch of origin rather than subtype
 
 
@@ -294,23 +242,17 @@ object@assays$RNA@var.features <- hvg
 object <- ScaleData(object) %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
 ```
 
-```{r}
+```{r fig.height=5, fig.width=10}
 method = "uncorrected_sharedFeatures"
 method.reduction <- "pca"
 metricsObject <- object
 
-integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
+integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject, metrics = useMetrics, meta.label = meta.label, meta.batch = meta.batch, lisi_perplexity = lisi_perplexity, method.reduction = method.reduction, metricsLabels = metricsLabels)
 
+plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.celltype)
 
 ```
 
-```{r fig.height=8, fig.width=16}
-plot.list[[method]][["batch"]] <- DimPlot(metricsObject, group.by = meta.batch, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Dataset/batch", title = method, caption = sprintf("batch_LISI %.2f",integrationMetrics[[method]][["batch_LISI"]]))
-plot.list[[method]][["label"]] <- DimPlot(metricsObject, group.by = meta.label, label=T, label.size = 4, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Cell labels", title = method, caption = sprintf("ASW %.2f; ASW_meanOfMeans %.2f",integrationMetrics[[method]][["celltype_ASW"]],integrationMetrics[[method]][["celltype_ASW_means"]]))
-
-
-plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
-```
 
 
 # STACAS integration
@@ -325,16 +267,13 @@ method = "STACAS"
 method.reduction <- "pca"
 metricsObject <- object_integrated_stacas
 
-integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
+integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject, metrics = useMetrics, meta.label = meta.label, meta.batch = meta.batch, lisi_perplexity = lisi_perplexity, method.reduction = method.reduction, metricsLabels = metricsLabels)
 
 ```
 
 ```{r fig.height=8, fig.width=16}
-plot.list[[method]][["batch"]] <- DimPlot(metricsObject, group.by = meta.batch, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Dataset/batch", title = method, caption = sprintf("batch_LISI %.2f",integrationMetrics[[method]][["batch_LISI"]]))
-plot.list[[method]][["label"]] <- DimPlot(metricsObject, group.by = meta.label, label=T, label.size = 4, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Cell labels", title = method, caption = sprintf("ASW %.2f; ASW_meanOfMeans %.2f",integrationMetrics[[method]][["celltype_ASW"]],integrationMetrics[[method]][["celltype_ASW_means"]]))
+plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.celltype)
 
-
-plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
 ```
 
 
@@ -362,17 +301,14 @@ method = "semisupSTACAS"
 method.reduction <- "pca"
 metricsObject <- object_integrated_ss
 
-integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
+integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject, metrics = useMetrics, meta.label = meta.label, meta.batch = meta.batch, lisi_perplexity = lisi_perplexity, method.reduction = method.reduction, metricsLabels = metricsLabels)
 
 
 ```
 
 ```{r fig.height=8, fig.width=16}
-plot.list[[method]][["batch"]] <- DimPlot(metricsObject, group.by = meta.batch, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Dataset/batch", title = method, caption = sprintf("batch_LISI %.2f",integrationMetrics[[method]][["batch_LISI"]]))
-plot.list[[method]][["label"]] <- DimPlot(metricsObject, group.by = meta.label, label=T, label.size = 4, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Cell labels", title = method, caption = sprintf("ASW %.2f; ASW_meanOfMeans %.2f",integrationMetrics[[method]][["celltype_ASW"]],integrationMetrics[[method]][["celltype_ASW_means"]]))
+plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.celltype)
 
-
-plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
 ```
 
 
@@ -401,16 +337,13 @@ method = "SEURAT_cca"
 method.reduction <- "pca"
 metricsObject <- object_integrated_cca
 
-integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
+integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject, metrics = useMetrics, meta.label = meta.label, meta.batch = meta.batch, lisi_perplexity = lisi_perplexity, method.reduction = method.reduction, metricsLabels = metricsLabels)
 
 ```
 
 ```{r fig.height=8, fig.width=16, eval=F }
-plot.list[[method]][["batch"]] <- DimPlot(metricsObject, group.by = meta.batch, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Dataset/batch", title = method, caption = sprintf("batch_LISI %.2f",integrationMetrics[[method]][["batch_LISI"]]))
-plot.list[[method]][["label"]] <- DimPlot(metricsObject, group.by = meta.label, label=T, label.size = 4, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Cell labels", title = method, caption = sprintf("ASW %.2f; ASW_meanOfMeans %.2f",integrationMetrics[[method]][["celltype_ASW"]],integrationMetrics[[method]][["celltype_ASW_means"]]))
+plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.celltype)
 
-
-plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
 ```
 
 
@@ -439,16 +372,13 @@ method = "SEURAT_rpca"
 method.reduction <- "pca"
 metricsObject <- object_integrated_rpca
 
-integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
+integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject, metrics = useMetrics, meta.label = meta.label, meta.batch = meta.batch, lisi_perplexity = lisi_perplexity, method.reduction = method.reduction, metricsLabels = metricsLabels)
 
 ```
 
 ```{r fig.height=8, fig.width=16, eval=T}
-plot.list[[method]][["batch"]] <- DimPlot(metricsObject, group.by = meta.batch, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Dataset/batch", title = method, caption = sprintf("batch_LISI %.2f",integrationMetrics[[method]][["batch_LISI"]]))
-plot.list[[method]][["label"]] <- DimPlot(metricsObject, group.by = meta.label, label=T, label.size = 4, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Cell labels", title = method, caption = sprintf("ASW %.2f; ASW_meanOfMeans %.2f",integrationMetrics[[method]][["celltype_ASW"]],integrationMetrics[[method]][["celltype_ASW_means"]]))
+plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.celltype)
 
-
-plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
 ```
 
 
@@ -471,16 +401,13 @@ method = "Harmony"
 method.reduction <- "harmony"
 metricsObject <- object_integrated_harmony
 
-integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
+integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject, metrics = useMetrics, meta.label = meta.label, meta.batch = meta.batch, lisi_perplexity = lisi_perplexity, method.reduction = method.reduction, metricsLabels = metricsLabels)
 
 ```
 
 ```{r fig.height=8, fig.width=16, eval=T}
-plot.list[[method]][["batch"]] <- DimPlot(metricsObject, group.by = meta.batch, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Dataset/batch", title = method, caption = sprintf("batch_LISI %.2f",integrationMetrics[[method]][["batch_LISI"]]))
-plot.list[[method]][["label"]] <- DimPlot(metricsObject, group.by = meta.label, label=T, label.size = 4, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Cell labels", title = method, caption = sprintf("ASW %.2f; ASW_meanOfMeans %.2f",integrationMetrics[[method]][["celltype_ASW"]],integrationMetrics[[method]][["celltype_ASW_means"]]))
+plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.celltype)
 
-
-plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
 ```
 
 
@@ -501,56 +428,30 @@ method = "FastMNN"
 method.reduction <- "mnn"
 metricsObject <- object_integrated_FastMNN
 
-integrationMetrics[[method]] <- getIntegrationMetrics(metricsObject, meta.label, meta.batch, lisi_perplexity, method.reduction)
+integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject, metrics = useMetrics, meta.label = meta.label, meta.batch = meta.batch, lisi_perplexity = lisi_perplexity, method.reduction = method.reduction, metricsLabels = metricsLabels)
 
 
 ```
 
 ```{r fig.height=8, fig.width=16, eval=T}
-plot.list[[method]][["batch"]] <- DimPlot(metricsObject, group.by = meta.batch, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Dataset/batch", title = method, caption = sprintf("batch_LISI %.2f",integrationMetrics[[method]][["batch_LISI"]]))
-plot.list[[method]][["label"]] <- DimPlot(metricsObject, group.by = meta.label, label=T, label.size = 4, reduction = "umap") + theme(aspect.ratio = 1) + labs(subtitle = "Cell labels", title = method, caption = sprintf("ASW %.2f; ASW_meanOfMeans %.2f",integrationMetrics[[method]][["celltype_ASW"]],integrationMetrics[[method]][["celltype_ASW_means"]]))
+plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.celltype)
 
-
-plot.list[[method]][["batch"]] | plot.list[[method]][["label"]]
 ```
 
 
 
 # Summary of Integration Metrics
 
+```{r, fig.height=8, fig.width=8}
 
-```{r fig.height=10, fig.width=10}
+integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) %>% tibble::rownames_to_column() %>% dplyr::rename(value=unlist.integrationMetrics.) %>% separate(rowname, c("Method","Metric"), sep="\\.") #\\.[[:alpha:]]
 
-plots.integrationMetrics <- list()
+ggplot(integrationMetricsSummary,aes(x=reorder_within(Method,-value, Metric), y=value, fill=Method)) + geom_bar(stat="identity") + 
+    theme_bw() + 
+    theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Dataset") + facet_wrap(~Metric, scales = "free")
 
-integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) %>% tibble::rownames_to_column() %>% dplyr::rename(value=unlist.integrationMetrics.) %>% separate(rowname, c("Method","Metric"), sep="\\.")
+ggsave("integration.CD8Tcells.summary.png",p, width = 30, height = 30)
 
-plots.integrationMetrics[[1]] <- integrationMetricsSummary %>% filter(Metric=="batch_LISI") %>%
-  ggplot(aes(x=reorder(Method,-value), y=value, fill=Method)) + geom_bar(stat="identity") + 
-  ggtitle("batch_LISI") + theme_bw() +
-  theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Method") + ylab("batch LISI")
-  
-plots.integrationMetrics[[2]] <- integrationMetricsSummary %>% filter(Metric=="batch_LISI_perCellType") %>%
-  ggplot(aes(x=reorder(Method,-value), y=value, fill=Method)) + geom_bar(stat="identity") + 
-  ggtitle("batch_LISI_perCellType") + theme_bw() +
-  theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Method") + ylab("batch LISI per CellType")
-
-plots.integrationMetrics[[3]] <- integrationMetricsSummary %>% filter(Metric=="batch_LISI_perCellType_means") %>%
-  ggplot(aes(x=reorder(Method,-value), y=value, fill=Method)) + geom_bar(stat="identity") + 
-  ggtitle("batch_LISI_perCellType_means") + theme_bw() +
-  theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Method") + ylab("batch LISI per CellType mean of means")
-
-plots.integrationMetrics[[4]] <- integrationMetricsSummary %>% filter(Metric=="celltype_ASW") %>%
-  ggplot(aes(x=reorder(Method,-value), y=value, fill=Method)) + geom_bar(stat="identity") + 
-  ggtitle("celltype_ASW") + theme_bw() +
-  theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Method") + ylab("celltype ASW")
-  
-plots.integrationMetrics[[5]] <- integrationMetricsSummary %>% filter(Metric=="celltype_ASW_means") %>%
-  ggplot(aes(x=reorder(Method,-value), y=value, fill=Method)) + geom_bar(stat="identity") + 
-  ggtitle("celltype_ASW_means") + theme_bw() +
-  theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Method") + ylab("celltype silhouette mean of means")
-
-wrap_plots(plots.integrationMetrics)
 ```
 
 
