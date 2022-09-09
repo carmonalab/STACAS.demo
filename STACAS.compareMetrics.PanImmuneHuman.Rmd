@@ -63,7 +63,6 @@ install.packages("tidyr")
 if (!require("tidytext", quietly = TRUE))
 install.packages("tidytext")
 
-
 if (!require("scIntegrationMetrics", quietly = TRUE))
 install_github("carmonalab/scIntegrationMetrics") #calculates LISI and Silhouette
 
@@ -92,7 +91,7 @@ set.seed(seed)
 Download the dataset of human immune cells assembled by [Luecken et al.](https://www.nature.com/articles/s41592-021-01336-8), and convert them to Seurat objects.
 ```{r}
 download <- F
-downsample <- 3000
+downsample <- 2000
 where <- 'aux'
 dir.create(where, showWarnings = FALSE)
 
@@ -141,6 +140,9 @@ batchLabels.table
 Optionally, for fast testing we can downsample cells in each batch
 ```{r}
 if(!is.null(downsample)){
+
+set.seed(123)
+  
 table(object@meta.data[[meta.batch]])
 table(object@meta.data[[meta.label]])
 
@@ -222,32 +224,6 @@ method.reduction <- "pca"
 metricsObject <- object
 
 integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject, metrics = useMetrics, meta.label = meta.label, meta.batch = meta.batch, lisi_perplexity = lisi_perplexity, method.reduction = method.reduction, metricsLabels = metricsLabels)
-
-```
-Sanity Check
-```{r}
-lisi.test <- compute_lisi(
-          object@reductions[[method.reduction]]@cell.embeddings,
-          meta_data = object@meta.data,
-          label_colnames = meta.batch,
-          perplexity = lisi_perplexity
-        )
-head(lisi.test$batch)
-lisi.test.norm <- (lisi.test-1)/(length(unique(object@meta.data[[meta.batch]]))-1)
-head(lisi.test.norm$batch)
-
-object$dummyGroup <- "dummyGroup"
-lisi.splitBy.test <- compute_lisi_splitBy(
-          object@reductions[[method.reduction]]@cell.embeddings,
-          meta_data = object@meta.data,
-          label_colnames = meta.batch,
-          perplexity = lisi_perplexity,
-          split_by_colname = "dummyGroup",
-          normalize = T
-        )
-head(lisi.splitBy.test[["dummyGroup"]]$batch)
-
-all.equal(lisi.test.norm$batch,lisi.splitBy.test[["dummyGroup"]]$batch)
 
 ```
 
@@ -403,7 +379,7 @@ plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.c
 
 # Seurat Integration - CCA method
 
-```{r, results=F, warning=F, message=F, eval=T }
+```{r, results=F, warning=F, message=F, fig.height=8, fig.width=16, eval=F }
 
 # find anchors
 obj.list.seuratAnchors <- FindIntegrationAnchors(obj.list, anchor.features = hvg, reduction = "cca", dims = 1:ndim)
@@ -412,24 +388,18 @@ obj.list.seuratAnchors <- FindIntegrationAnchors(obj.list, anchor.features = hvg
 object_integrated_cca <- IntegrateData(anchorset = obj.list.seuratAnchors, dims=1:ndim)
 
 rm(obj.list.seuratAnchors)
-```
 
-Visualize on UMAP space
-```{r results=F, warning=F, message=F, eval=T}
+
+#Visualize on UMAP space
 object_integrated_cca <- object_integrated_cca %>% ScaleData() %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
-```
 
 
-```{r, eval=T}
 method = "SEURAT_cca"
 method.reduction <- "pca"
 metricsObject <- object_integrated_cca
 
 integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject, metrics = useMetrics, meta.label = meta.label, meta.batch = meta.batch, lisi_perplexity = lisi_perplexity, method.reduction = method.reduction, metricsLabels = metricsLabels)
 
-```
-
-```{r fig.height=8, fig.width=16, eval=T}
 plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.celltype)
 
 ```
