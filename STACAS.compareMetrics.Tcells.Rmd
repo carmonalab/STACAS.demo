@@ -50,6 +50,9 @@ BiocManager::install("batchelor")
 if (!require("tidyr", quietly = TRUE))
 install.packages("tidyr")
 
+if (!require("tidyrtext", quietly = TRUE))
+install.packages("tidytext")
+
 if (!require("scIntegrationMetrics", quietly = TRUE))
 install_github("carmonalab/scIntegrationMetrics") #calculates LISI and Silhouette
 
