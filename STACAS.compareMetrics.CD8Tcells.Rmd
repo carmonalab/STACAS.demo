@@ -211,7 +211,7 @@ We'll split by dataset/batch, calculate HVG for each, then identify shared genes
 obj.list <- SplitObject(object, split.by = meta.batch)
 ```
 
-```{r message=F, warning=F,results=F, eval=T}
+```{r message=F, warning=F,results=F, eval=F}
 
 for (i in 1:length(obj.list)) {
   #obj.list[[i]] <- NormalizeData(obj.list[[i]],assay="RNA",normalization.method="LogNormalize") # these data are already pre-normalized
@@ -223,7 +223,7 @@ hvg <- SelectIntegrationFeatures(obj.list, nfeatures = nfeatures)
 
 
 Alternatively, calculate HVG excluding specific gene sets using FindVariableFeatures.STACAS function (default STACAS' behaviour)
-```{r warning=F, collapse =T,message =F, eval=F}
+```{r warning=F, collapse =T,message =F, eval=T}
 library(SignatuR)
 my.genes.blocklist <- GetSignature(SignatuR$Hs)
 
@@ -243,7 +243,7 @@ object <- ScaleData(object) %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
 ```
 
 ```{r fig.height=5, fig.width=10}
-method = "uncorrected_sharedFeatures"
+method = "sharedFeatures"
 method.reduction <- "pca"
 metricsObject <- object
 
@@ -454,6 +454,9 @@ ggsave("integration.CD8Tcells.summary.png",p, width = 30, height = 30)
 
 ```
 
+```{r}
+integrationMetricsSummary %>% filter(Metric %in% c("celltype_ASW_means","batch_nLISI_perCellType_means")) %>% pivot_wider(names_from = Metric, values_from = value ) %>% ggplot(aes(x=batch_nLISI_perCellType_means, y=celltype_ASW_means, label=Method)) + geom_point(aes(color=Method))  + geom_text(hjust=0.1, vjust=0) +  theme_light()
+```
 
 ```{r  fig.height=20, fig.width=20}
 p <- wrap_plots(lapply(plot.list,wrap_plots),ncol=2)
