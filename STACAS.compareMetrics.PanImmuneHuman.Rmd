@@ -91,7 +91,6 @@ set.seed(seed)
 Download the dataset of human immune cells assembled by [Luecken et al.](https://www.nature.com/articles/s41592-021-01336-8), and convert them to Seurat objects.
 ```{r}
 download <- F
-downsample <- 2000
 where <- 'aux'
 dir.create(where, showWarnings = FALSE)
 
@@ -139,33 +138,33 @@ batchLabels.table
 
 Optionally, for fast testing we can downsample cells in each batch
 ```{r}
-if(!is.null(downsample)){
-
+downsample <- 2000
 set.seed(123)
   
-table(object@meta.data[[meta.batch]])
-table(object@meta.data[[meta.label]])
-
-Idents(object) <- meta.label
-object <- subset(object, downsample = downsample)
-
-Idents(object) <- meta.batch
-object <- subset(object, downsample = downsample)
-
-table(object@meta.data[[meta.batch]])
-table(object@meta.data[[meta.label]])
-
-batchLabels.table <- table(object@meta.data[[meta.label]], object@meta.data[[meta.batch]])
-batchLabels.table
+if(!is.null(downsample)){
+  
+  table(object@meta.data[[meta.batch]])
+  table(object@meta.data[[meta.label]])
+  
+  Idents(object) <- meta.label
+  object <- subset(object, downsample = downsample)
+  
+  Idents(object) <- meta.batch
+  object <- subset(object, downsample = downsample)
+  
+  table(object@meta.data[[meta.batch]])
+  table(object@meta.data[[meta.label]])
+  
+  batchLabels.table <- table(object@meta.data[[meta.label]],
+                             object@meta.data[[meta.batch]])
+  batchLabels.table
 }
-
-
-
 ```
 
 
-For integration metrics, do not consider labels that are contributed in more than `thrMaxPerBatch` (90%) by a single dataset/batch.
-Additionally, at least `minBatchesPerCellType` (2) datasets have to contribute with at least `thrMinPerBatch` (5%) each. Then number of datasets over this threshold can be used to normalized LISI scores per label.
+For integration metrics, do not consider labels that come from a single dataset/batch for `thrMaxPerBatch` (90%) of the total cells.
+
+Additionally, at least `minBatchesPerCellType` (2) datasets have to contribute to the cell type with at least `thrMinPerBatch` (5%) of cells. The number of datasets over this threshold can be used to normalized LISI scores per label.
 
 ```{r}
 batchLabels <- round( batchLabels.table / rowSums(batchLabels.table) * 100) 
@@ -177,7 +176,11 @@ thrMinPerBatch <- 5
 ```{r}
 bachesPerLabel <- apply(batchLabels,1,function(x) sum(x > thrMinPerBatch) )
 removeLabels <- names(bachesPerLabel[bachesPerLabel < minBatchesPerCellType ])
-removeLabels <- unique(removeLabels,names(which(apply(batchLabels, 1, function(x) max(x) > thrMaxPerBatch) ))) #  contributed in more than 90% by a single dataset/batch
+removeLabels <- unique(removeLabels,
+                       names(which(apply(
+                         batchLabels, 1, function(x) max(x) > thrMaxPerBatch)
+                         ))) #  contributed in more than 90% by a single dataset/batch
+
 metricsLabels <- setdiff(unique(object@meta.data[[meta.label]]),removeLabels)
 if (length(removeLabels)>0) sprintf("Removed label: %s",removeLabels)
 ```
@@ -194,36 +197,37 @@ NOTE: In the Luecken's benchamark, 2000 HVG, 30 PCA dimensions (Seurat's default
 We can use lower values for faster computation, with similar results
 
 
-How does the collection of datasets look without any integration?
+# How does the collection of datasets look without any integration?
 
 Run a standard Seurat pipeline for dimensionality reduction
 
-The next optional chuck is for harmonizing gene names, if needed
-```{r, eval=F}
-library(data.table)
-ensembleRef <- "aux/EnsemblGenes105_Mmu_GRCm39.txt.gz" #"https://github.com/carmonalab/scRNAseq_data_processing/blob/master/aux/EnsemblGenes105_Mmu_GRCm39.txt.gz
-#object@assays$RNA@counts <- object@assays$RNA@data
-object <- STACAS:::standardizeGeneSymbols(obj = object, EnsemblGeneFile=ensembleRef)
-```
-
-
-
 ```{r message=F, warning=F,results=F}
-object <- NormalizeData(object,normalization.method = "LogNormalize", scale.factor = 10000) # these data are pre-normalized
-object <- FindVariableFeatures(object, nfeatures = nfeatures) %>% ScaleData() %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
+object <- NormalizeData(object,normalization.method = "LogNormalize",
+                        scale.factor = 10000) # these data are pre-normalized
+object <- FindVariableFeatures(object, nfeatures = nfeatures) %>%
+  ScaleData() %>%
+  RunPCA(npcs=ndim) %>%
+  RunUMAP(dims=1:ndim)
 ```
 
 
 ```{r}
 integrationMetrics <- list()
-useMetrics <- c("batch_LISI","batch_nLISI", "batch_nLISI_perCellType", "batch_nLISI_perCellType_means", 
-"1-celltype_nLISI", "1-celltype_nLISI_means", "celltype_ASW", "celltype_ASW_means")
+useMetrics <- c("batch_LISI","batch_nLISI", "batch_nLISI_perCellType",
+                "batch_nLISI_perCellType_means", "1-celltype_nLISI",
+                "1-celltype_nLISI_means", "celltype_ASW", "celltype_ASW_means")
 
 method = "uncorrected"
 method.reduction <- "pca"
 metricsObject <- object
 
-integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject, metrics = useMetrics, meta.label = meta.label, meta.batch = meta.batch, lisi_perplexity = lisi_perplexity, method.reduction = method.reduction, metricsLabels = metricsLabels)
+integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject,
+                                                      metrics = useMetrics,
+                                                      meta.label = meta.label,
+                                                      meta.batch = meta.batch,
+                                                      lisi_perplexity = lisi_perplexity,
+                                                      method.reduction = method.reduction,
+                                                      metricsLabels = metricsLabels)
 
 ```
 
@@ -238,19 +242,36 @@ metricsShow.celltype <- grep("celltype",names(integrationMetrics[[1]]),value = T
 ```{r}
 
 plotIntegrationMetricsDim <- function(plot.list, metricsShow.batch, metricsShow.celltype, reduction="umap", plot=T){
-
-metricsShow.batch.caption <- paste(metricsShow.batch,round(as.numeric(integrationMetrics[[method]][metricsShow.batch]),2),collapse = "\n ")
-metricsShow.celltype.caption <- paste(metricsShow.celltype,round(as.numeric(integrationMetrics[[method]][metricsShow.celltype]),2),collapse = "\n ")
   
-plot.list[[method]][["batch"]] <- DimPlot(metricsObject, group.by = meta.batch, reduction = reduction) + theme(aspect.ratio = 1) + labs(subtitle = "Dataset/batch", title = method, caption = metricsShow.batch.caption)
-
-plot.list[[method]][["label"]] <- DimPlot(metricsObject, group.by = meta.label, label=T, label.size = 4, reduction = reduction) + theme(aspect.ratio = 1) + labs(subtitle = "Cell labels", title = method, caption = metricsShow.celltype.caption)
-
-
-if(plot) print(plot.list[[method]][["batch"]] | plot.list[[method]][["label"]])
-
-return(plot.list)
-
+  batch <- round(as.numeric(integrationMetrics[[method]][metricsShow.batch]),2)
+  ctype <- round(as.numeric(integrationMetrics[[method]][metricsShow.celltype]),2)
+  
+  metricsShow.batch.caption <- paste(metricsShow.batch, batch, collapse = "\n ")
+  
+  metricsShow.celltype.caption <- paste(metricsShow.celltype, ctype, collapse = "\n ")
+  
+  plot.list[[method]][["batch"]] <- DimPlot(metricsObject,
+                                            group.by = meta.batch,
+                                            reduction = reduction) + 
+    theme(aspect.ratio = 1) +
+    labs(subtitle = "Dataset/batch", title = method, caption = metricsShow.batch.caption)
+  
+  plot.list[[method]][["label"]] <- DimPlot(metricsObject,
+                                            group.by = meta.label,
+                                            label=T,
+                                            label.size = 4,
+                                            reduction = reduction) + 
+    theme(aspect.ratio = 1) +
+    labs(subtitle = "Cell labels", title = method, caption = metricsShow.celltype.caption)
+  
+  
+  if (plot) {
+    a <- plot.list[[method]][["batch"]]
+    b <- plot.list[[method]][["label"]]
+    print(a | b)
+  }
+  return(plot.list)
+  
 } 
 
 ```
@@ -258,9 +279,9 @@ return(plot.list)
 
 
 ```{r fig.height=6, fig.width=6}
-
-plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.celltype)
-
+plot.list <- plotIntegrationMetricsDim(plot.list,
+                                       metricsShow.batch,
+                                       metricsShow.celltype)
 ```
 
 Clusters are largely driven by cell subtypes, but within each subtype the effect of study/batch is visible in the UMAP
@@ -276,28 +297,13 @@ obj.list <- SplitObject(object, split.by = meta.batch)
 ```{r message=F, warning=F,results=F, eval=T}
 
 for (i in 1:length(obj.list)) {
-  obj.list[[i]] <- NormalizeData(obj.list[[i]],assay="RNA",normalization.method="LogNormalize") # these data are already pre-normalized
+  obj.list[[i]] <- NormalizeData(obj.list[[i]],assay="RNA",
+                                 normalization.method="LogNormalize")
   obj.list[[i]] <- FindVariableFeatures(obj.list[[i]], nfeatures=nfeatures*2)
 }
 
 hvg <- SelectIntegrationFeatures(obj.list, nfeatures = nfeatures)
 ```
-
-
-NOTE: The calculation of highly variable genes (HVG) is a fundamental step for dimensionality reduction (and for integration based on low dimensional representations). We recommend excluding certain classes of genes, e.g. mitochondrial, ribosomal, heat-shock genes, from the list of variable genes, as their expression may be more related to technical variability rather than to cell type identity. Similarly, VDJ genes are highly individual-specific. FindVariableFeatures.STACAS function (default STACAS' behavior) calculates HVG excluding non-desirable gene sets:
-
-```{r warning=F, collapse =T,message =F, eval=F}
-library(SignatuR)
-my.genes.blocklist <- GetSignature(SignatuR$Hs)
-
-for (i in 1:length(obj.list)) {
-  #obj.list[[i]] <- NormalizeData(obj.list[[i]],assay="RNA",normalization.method="LogNormalize")
-  obj.list[[i]] <- FindVariableFeatures.STACAS(obj.list[[i]], nfeat=nfeatures*2, genesBlockList = my.genes.blocklist)
-}
-
-hvg <- SelectIntegrationFeatures(obj.list, nfeatures = nfeatures)
-```
-
 
 Re-calculate dimensionality reduction using `hvg`
 ```{r message=F, warning=F,results=F}
@@ -310,11 +316,19 @@ method = "sharedFeatures"
 method.reduction <- "pca"
 metricsObject <- object
 
-integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject, metrics = useMetrics, meta.label = meta.label, meta.batch = meta.batch, lisi_perplexity = lisi_perplexity, method.reduction = method.reduction, metricsLabels = metricsLabels)
+integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject,
+                                                      metrics = useMetrics,
+                                                      meta.label = meta.label,
+                                                      meta.batch = meta.batch,
+                                                      lisi_perplexity = lisi_perplexity,
+                                                      method.reduction = method.reduction,
+                                                      metricsLabels = metricsLabels)
 ```
 
 ```{r fig.height=5, fig.width=5}
-plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.celltype)
+plot.list <- plotIntegrationMetricsDim(plot.list,
+                                       metricsShow.batch,
+                                       metricsShow.celltype)
 ```
 
 
@@ -331,12 +345,20 @@ method = "STACAS"
 method.reduction <- "pca"
 metricsObject <- object_integrated_stacas
 
-integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject, metrics = useMetrics, meta.label = meta.label, meta.batch = meta.batch, lisi_perplexity = lisi_perplexity, method.reduction = method.reduction, metricsLabels = metricsLabels)
+integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject,
+                                                      metrics = useMetrics,
+                                                      meta.label = meta.label,
+                                                      meta.batch = meta.batch,
+                                                      lisi_perplexity = lisi_perplexity,
+                                                      method.reduction = method.reduction,
+                                                      metricsLabels = metricsLabels)
 
 ```
 
 ```{r fig.height=5, fig.width=5}
-plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.celltype)
+plot.list <- plotIntegrationMetricsDim(plot.list,
+                                       metricsShow.batch,
+                                       metricsShow.celltype)
 
 ```
 
@@ -351,7 +373,8 @@ In this dataset, cells were annotated by the authors of the benchmark. In practi
 
 Here we indicate in `cell.labels` the metadata column that contains cell annotations
 ```{r, results=F, warning=F, message=F }
-object_integrated_ss <- obj.list %>% Run.STACAS(dims = 1:ndim, anchor.features = hvg, cell.labels = meta.label)
+object_integrated_ss <- obj.list %>% Run.STACAS(dims = 1:ndim, anchor.features=hvg,
+                                                cell.labels = meta.label)
 ```
 
 
@@ -367,11 +390,19 @@ method = "semisupSTACAS"
 method.reduction <- "pca"
 metricsObject <- object_integrated_ss
 
-integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject, metrics = useMetrics, meta.label = meta.label, meta.batch = meta.batch, lisi_perplexity = lisi_perplexity, method.reduction = method.reduction, metricsLabels = metricsLabels)
+integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject,
+                                                      metrics = useMetrics,
+                                                      meta.label = meta.label,
+                                                      meta.batch = meta.batch,
+                                                      lisi_perplexity = lisi_perplexity,
+                                                      method.reduction = method.reduction,
+                                                      metricsLabels = metricsLabels)
 ```
 
 ```{r fig.height=8, fig.width=16}
-plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.celltype)
+plot.list <- plotIntegrationMetricsDim(plot.list,
+                                       metricsShow.batch,
+                                       metricsShow.celltype)
 
 ```
 
@@ -398,7 +429,13 @@ method = "SEURAT_cca"
 method.reduction <- "pca"
 metricsObject <- object_integrated_cca
 
-integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject, metrics = useMetrics, meta.label = meta.label, meta.batch = meta.batch, lisi_perplexity = lisi_perplexity, method.reduction = method.reduction, metricsLabels = metricsLabels)
+integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject,
+                                                      metrics = useMetrics,
+                                                      meta.label = meta.label,
+                                                      meta.batch = meta.batch,
+                                                      lisi_perplexity = lisi_perplexity,
+                                                      method.reduction = method.reduction,
+                                                      metricsLabels = metricsLabels)
 
 plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.celltype)
 
@@ -411,7 +448,8 @@ plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.c
 ```{r, results=F, warning=F, message=F }
 
 # find anchors
-obj.list.seuratAnchors <- FindIntegrationAnchors(obj.list, anchor.features = hvg, reduction = "rpca", dims = 1:ndim)
+obj.list.seuratAnchors <- FindIntegrationAnchors(obj.list, anchor.features = hvg,
+                                                 reduction = "rpca", dims = 1:ndim)
 
 # integrate data
 object_integrated_rpca <- IntegrateData(anchorset = obj.list.seuratAnchors, dims=1:ndim)
@@ -430,7 +468,13 @@ method = "SEURAT_rpca"
 method.reduction <- "pca"
 metricsObject <- object_integrated_rpca
 
-integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject, metrics = useMetrics, meta.label = meta.label, meta.batch = meta.batch, lisi_perplexity = lisi_perplexity, method.reduction = method.reduction, metricsLabels = metricsLabels)
+integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject,
+                                                      metrics = useMetrics,
+                                                      meta.label = meta.label,
+                                                      meta.batch = meta.batch,
+                                                      lisi_perplexity = lisi_perplexity,
+                                                      method.reduction = method.reduction,
+                                                      metricsLabels = metricsLabels)
 
 ```
 
@@ -458,7 +502,13 @@ method = "Harmony"
 method.reduction <- "harmony"
 metricsObject <- object_integrated_harmony
 
-integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject, metrics = useMetrics, meta.label = meta.label, meta.batch = meta.batch, lisi_perplexity = lisi_perplexity, method.reduction = method.reduction, metricsLabels = metricsLabels)
+integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject,
+                                                      metrics = useMetrics,
+                                                      meta.label = meta.label,
+                                                      meta.batch = meta.batch,
+                                                      lisi_perplexity = lisi_perplexity,
+                                                      method.reduction = method.reduction,
+                                                      metricsLabels = metricsLabels)
 
 ```
 
@@ -485,7 +535,13 @@ method = "FastMNN"
 method.reduction <- "mnn"
 metricsObject <- object_integrated_FastMNN
 
-integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject, metrics = useMetrics, meta.label = meta.label, meta.batch = meta.batch, lisi_perplexity = lisi_perplexity, method.reduction = method.reduction, metricsLabels = metricsLabels)
+integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject,
+                                                      metrics = useMetrics,
+                                                      meta.label = meta.label,
+                                                      meta.batch = meta.batch,
+                                                      lisi_perplexity = lisi_perplexity,
+                                                      method.reduction = method.reduction,
+                                                      metricsLabels = metricsLabels)
 
 ```
 
@@ -501,9 +557,11 @@ plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.c
 
 integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) %>% tibble::rownames_to_column() %>% dplyr::rename(value=unlist.integrationMetrics.) %>% separate(rowname, c("Method","Metric"), sep="\\.") #\\.[[:alpha:]]
 
-ggplot(integrationMetricsSummary,aes(x=reorder_within(Method,-value, Metric), y=value, fill=Method)) + geom_bar(stat="identity") + 
+ggplot(integrationMetricsSummary, aes(x=reorder_within(Method,-value, Metric),
+                                      y=value, fill=Method)) + geom_bar(stat="identity") + 
     theme_bw() + 
-    theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Dataset") + facet_wrap(~Metric, scales = "free")
+    theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) +
+  xlab("Dataset") + facet_wrap(~Metric, scales = "free")
 
 ```
 
