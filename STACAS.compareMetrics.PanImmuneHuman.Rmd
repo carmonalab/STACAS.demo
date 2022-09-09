@@ -60,6 +60,10 @@ BiocManager::install("batchelor")
 if (!require("tidyr", quietly = TRUE))
 install.packages("tidyr")
 
+if (!require("tidytext", quietly = TRUE))
+install.packages("tidytext")
+
+
 if (!require("scIntegrationMetrics", quietly = TRUE))
 install_github("carmonalab/scIntegrationMetrics") #calculates LISI and Silhouette
 
@@ -211,7 +215,7 @@ object <- FindVariableFeatures(object, nfeatures = nfeatures) %>% ScaleData() %>
 ```{r}
 integrationMetrics <- list()
 useMetrics <- c("batch_LISI","batch_nLISI", "batch_nLISI_perCellType", "batch_nLISI_perCellType_means", 
-"celltype_nLISI", "celltype_nLISI_means", "celltype_ASW", "celltype_ASW_means")
+"1-celltype_nLISI", "1-celltype_nLISI_means", "celltype_ASW", "celltype_ASW_means")
 
 method = "uncorrected"
 method.reduction <- "pca"
@@ -527,7 +531,7 @@ plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.c
 
 integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) %>% tibble::rownames_to_column() %>% dplyr::rename(value=unlist.integrationMetrics.) %>% separate(rowname, c("Method","Metric"), sep="\\.") #\\.[[:alpha:]]
 
-ggplot(integrationMetricsSummary,aes(x=reorder(Method,-value), y=value, fill=Method)) + geom_bar(stat="identity") + 
+ggplot(integrationMetricsSummary,aes(x=reorder_within(Method,-value, Metric), y=value, fill=Method)) + geom_bar(stat="identity") + 
     theme_bw() + 
     theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Dataset") + facet_wrap(~Metric, scales = "free")
 
