@@ -211,7 +211,7 @@ object <- FindVariableFeatures(object, nfeatures = nfeatures) %>%
 ```
 
 
-```{r}
+```{r, results=F, warning=F, message=F}
 integrationMetrics <- list()
 useMetrics <- c("batch_LISI","batch_nLISI", "batch_nLISI_perCellType",
                 "batch_nLISI_perCellType_means", "1-celltype_nLISI",
@@ -311,7 +311,7 @@ object@assays$RNA@var.features <- hvg
 object <- ScaleData(object) %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
 ```
 
-```{r}
+```{r, results=F, warning=F, message=F}
 method = "sharedFeatures"
 method.reduction <- "pca"
 metricsObject <- object
@@ -325,7 +325,7 @@ integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject,
                                                       metricsLabels = metricsLabels)
 ```
 
-```{r fig.height=5, fig.width=5}
+```{r  fig.height=8, fig.width=16}
 plot.list <- plotIntegrationMetricsDim(plot.list,
                                        metricsShow.batch,
                                        metricsShow.celltype)
@@ -340,7 +340,7 @@ object_integrated_stacas <- Run.STACAS(obj.list, dims = 1:ndim, anchor.features 
       RunUMAP(dims = 1:ndim) 
 ```
 
-```{r}
+```{r, results=F, warning=F, message=F}
 method = "STACAS"
 method.reduction <- "pca"
 metricsObject <- object_integrated_stacas
@@ -355,7 +355,7 @@ integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject,
 
 ```
 
-```{r fig.height=5, fig.width=5}
+```{r  fig.height=8, fig.width=16}
 plot.list <- plotIntegrationMetricsDim(plot.list,
                                        metricsShow.batch,
                                        metricsShow.celltype)
@@ -385,7 +385,7 @@ Visualize on UMAP space
 object_integrated_ss <- object_integrated_ss %>% RunUMAP(dims=1:ndim)
 ```
 
-```{r}
+```{r, results=F, warning=F, message=F}
 method = "semisupSTACAS"
 method.reduction <- "pca"
 metricsObject <- object_integrated_ss
@@ -463,7 +463,7 @@ Visualize on UMAP space
 object_integrated_rpca <- object_integrated_rpca %>% ScaleData() %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
 ```
 
-```{r}
+```{r, results=F, warning=F, message=F}
 method = "SEURAT_rpca"
 method.reduction <- "pca"
 metricsObject <- object_integrated_rpca
@@ -497,7 +497,7 @@ object_integrated_harmony <- RunUMAP(object_integrated_harmony, reduction = "har
 ```
 
 
-```{r}
+```{r, results=F, warning=F, message=F}
 method = "Harmony"
 method.reduction <- "harmony"
 metricsObject <- object_integrated_harmony
@@ -530,7 +530,7 @@ object_integrated_FastMNN <- RunUMAP(object_integrated_FastMNN, reduction = "mnn
 ```
 
 
-```{r}
+```{r, results=F, warning=F, message=F}
 method = "FastMNN"
 method.reduction <- "mnn"
 metricsObject <- object_integrated_FastMNN
@@ -553,7 +553,7 @@ plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.c
 
 # Summary of Integration Metrics
 
-```{r, fig.height=8, fig.width=8}
+```{r, fig.height=20, fig.width=20}
 
 integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) %>% tibble::rownames_to_column() %>% dplyr::rename(value=unlist.integrationMetrics.) %>% separate(rowname, c("Method","Metric"), sep="\\.") #\\.[[:alpha:]]
 
@@ -566,7 +566,7 @@ ggplot(integrationMetricsSummary, aes(x=reorder_within(Method,-value, Metric),
 ```
 
 ```{r}
-integrationMetricsSummary %>% filter(Metric %in% c("celltype_ASW_means","batch_nLISI_perCellType_means")) %>% pivot_wider(names_from = Metric, values_from = value ) %>% ggplot(aes(x=batch_nLISI_perCellType_means, y=celltype_ASW_means, label=Method)) + geom_point(aes(color=Method))  + geom_text(hjust=0.1, vjust=0) +  theme_light()
+integrationMetricsSummary %>% filter(Metric %in% c("celltype_ASW","batch_nLISI_perCellType")) %>% pivot_wider(names_from = Metric, values_from = value ) %>% ggplot(aes(x=batch_nLISI_perCellType, y=celltype_ASW, label=Method)) + geom_point(aes(color=Method))  + geom_text(hjust=0.1, vjust=0) +  theme_light()
 ```
 
 ```{r fig.height=20, fig.width=20}
