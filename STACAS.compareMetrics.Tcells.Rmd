@@ -167,7 +167,7 @@ object <- FindVariableFeatures(object, nfeatures = nfeatures) %>%
   RunUMAP(dims=1:ndim)
 ```
 
-```{r}
+```{r, results=F, warning=F, message=F }
 integrationMetrics <- list()
 
 useMetrics <- c("batch_LISI","batch_nLISI", "batch_nLISI_perCellType", "batch_nLISI_perCellType_means", 
@@ -208,7 +208,7 @@ return(plot.list)
 
 ```
 
-```{r fig.height=6, fig.width=6}
+```{r fig.height=8, fig.width=8}
 
 plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.celltype)
 
@@ -256,7 +256,7 @@ object@assays$RNA@var.features <- hvg
 object <- ScaleData(object) %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
 ```
 
-```{r}
+```{r message=F, warning=F,results=F} 
 method = "sharedFeatures"
 method.reduction <- "pca"
 metricsObject <- object
@@ -279,7 +279,7 @@ object_integrated_stacas <- Run.STACAS(obj.list, dims = 1:ndim, anchor.features 
       RunUMAP(dims = 1:ndim) 
 ```
 
-```{r}
+```{r, results=F, warning=F, message=F}
 method = "STACAS"
 method.reduction <- "pca"
 metricsObject <- object_integrated_stacas
@@ -313,7 +313,7 @@ Visualize on UMAP space
 object_integrated_ss <- object_integrated_ss %>% RunUMAP(dims=1:ndim)
 ```
 
-```{r}
+```{r, results=F, warning=F, message=F}
 method = "semisupSTACAS"
 method.reduction <- "pca"
 metricsObject <- object_integrated_ss
@@ -332,7 +332,7 @@ plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.c
 
 # Seurat Integration - CCA method
 
-```{r, results=F, warning=F, message=F, eval=F}
+```{r, results=F, warning=F, message=F, fig.height=8, fig.width=16, eval=T}
 
 # find anchors
 obj.list.seuratAnchors <- FindIntegrationAnchors(obj.list, anchor.features = hvg, reduction = "cca", dims = 1:ndim)
@@ -341,24 +341,18 @@ obj.list.seuratAnchors <- FindIntegrationAnchors(obj.list, anchor.features = hvg
 object_integrated_cca <- IntegrateData(anchorset = obj.list.seuratAnchors, dims=1:ndim)
 
 rm(obj.list.seuratAnchors)
-```
 
-Visualize on UMAP space
-```{r results=F, warning=F, message=F, eval=F}
+
+#Visualize on UMAP space
+
 object_integrated_cca <- object_integrated_cca %>% ScaleData() %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
-```
 
-
-```{r, eval=F}
 method = "SEURAT_cca"
 method.reduction <- "pca"
 metricsObject <- object_integrated_cca
 
 integrationMetrics[[method]] <- getIntegrationMetrics(object=metricsObject, metrics = useMetrics, meta.label = meta.label, meta.batch = meta.batch, lisi_perplexity = lisi_perplexity, method.reduction = method.reduction, metricsLabels = metricsLabels)
 
-```
-
-```{r fig.height=8, fig.width=16, eval=F }
 plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.celltype)
 
 ```
@@ -384,7 +378,7 @@ Visualize on UMAP space
 object_integrated_rpca <- object_integrated_rpca %>% ScaleData() %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
 ```
 
-```{r}
+```{r, results=F, warning=F, message=F}
 method = "SEURAT_rpca"
 method.reduction <- "pca"
 metricsObject <- object_integrated_rpca
@@ -413,7 +407,7 @@ object_integrated_harmony <- RunUMAP(object_integrated_harmony, reduction = "har
 ```
 
 
-```{r}
+```{r, results=F, warning=F, message=F}
 method = "Harmony"
 method.reduction <- "harmony"
 metricsObject <- object_integrated_harmony
@@ -440,7 +434,7 @@ object_integrated_FastMNN <- RunUMAP(object_integrated_FastMNN, reduction = "mnn
 ```
 
 
-```{r}
+```{r, results=F, warning=F, message=F}
 method = "FastMNN"
 method.reduction <- "mnn"
 metricsObject <- object_integrated_FastMNN
@@ -460,7 +454,7 @@ plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.c
 # Summary of Integration Metrics
 
 
-```{r fig.height=10, fig.width=10}
+```{r fig.height=15, fig.width=15}
 
 integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) %>% tibble::rownames_to_column() %>% dplyr::rename(value=unlist.integrationMetrics.) %>% separate(rowname, c("Method","Metric"), sep="\\.") #\\.[[:alpha:]]
 
