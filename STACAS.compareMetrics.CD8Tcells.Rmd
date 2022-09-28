@@ -153,7 +153,7 @@ object <- STACAS:::standardizeGeneSymbols(obj = object, EnsemblGeneFile=ensemble
 object <- FindVariableFeatures(object, nfeatures = nfeatures) %>% ScaleData() %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
 ```
 
-```{r}
+```{r, results=F, warning=F, message=F}
 integrationMetrics <- list()
 useMetrics <- c("batch_LISI","batch_nLISI", "batch_nLISI_perCellType", "batch_nLISI_perCellType_means", 
 "1-celltype_nLISI", "1-celltype_nLISI_means", "celltype_ASW", "celltype_ASW_means")
@@ -242,7 +242,7 @@ object@assays$RNA@var.features <- hvg
 object <- ScaleData(object) %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
 ```
 
-```{r fig.height=5, fig.width=10}
+```{r, results=F, warning=F, message=F, fig.height=5, fig.width=10}
 method = "sharedFeatures"
 method.reduction <- "pca"
 metricsObject <- object
@@ -262,7 +262,7 @@ object_integrated_stacas <- Run.STACAS(obj.list, dims = 1:ndim, anchor.features 
       RunUMAP(dims = 1:ndim) 
 ```
 
-```{r}
+```{r, results=F, warning=F, message=F}
 method = "STACAS"
 method.reduction <- "pca"
 metricsObject <- object_integrated_stacas
@@ -296,7 +296,7 @@ Visualize on UMAP space
 object_integrated_ss <- object_integrated_ss %>% RunUMAP(dims=1:ndim)
 ```
 
-```{r}
+```{r, results=F, warning=F, message=F}
 method = "semisupSTACAS"
 method.reduction <- "pca"
 metricsObject <- object_integrated_ss
@@ -332,7 +332,7 @@ object_integrated_cca <- object_integrated_cca %>% ScaleData() %>% RunPCA(npcs=n
 ```
 
 
-```{r, eval=F}
+```{r, results=F, warning=F, message=F, eval=F}
 method = "SEURAT_cca"
 method.reduction <- "pca"
 metricsObject <- object_integrated_cca
@@ -367,7 +367,7 @@ Visualize on UMAP space
 object_integrated_rpca <- object_integrated_rpca %>% ScaleData() %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
 ```
 
-```{r}
+```{r, results=F, warning=F, message=F}
 method = "SEURAT_rpca"
 method.reduction <- "pca"
 metricsObject <- object_integrated_rpca
@@ -396,7 +396,7 @@ object_integrated_harmony <- RunUMAP(object_integrated_harmony, reduction = "har
 ```
 
 
-```{r}
+```{r, results=F, warning=F, message=F}
 method = "Harmony"
 method.reduction <- "harmony"
 metricsObject <- object_integrated_harmony
@@ -423,7 +423,7 @@ object_integrated_FastMNN <- RunUMAP(object_integrated_FastMNN, reduction = "mnn
 ```
 
 
-```{r}
+```{r, results=F, warning=F, message=F}
 method = "FastMNN"
 method.reduction <- "mnn"
 metricsObject <- object_integrated_FastMNN
@@ -442,7 +442,7 @@ plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.c
 
 # Summary of Integration Metrics
 
-```{r, fig.height=8, fig.width=8}
+```{r, fig.height=15, fig.width=15}
 
 integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) %>% tibble::rownames_to_column() %>% dplyr::rename(value=unlist.integrationMetrics.) %>% separate(rowname, c("Method","Metric"), sep="\\.") #\\.[[:alpha:]]
 
@@ -450,7 +450,7 @@ ggplot(integrationMetricsSummary,aes(x=reorder_within(Method,-value, Metric), y=
     theme_bw() + 
     theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Dataset") + facet_wrap(~Metric, scales = "free")
 
-ggsave("integration.CD8Tcells.summary.png",p, width = 30, height = 30)
+ggsave("integration.CD8Tcells.summary.png", width = 30, height = 30)
 
 ```
 
