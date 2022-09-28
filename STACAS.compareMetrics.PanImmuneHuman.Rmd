@@ -410,6 +410,8 @@ plot.list <- plotIntegrationMetricsDim(plot.list,
 
 # Seurat Integration - CCA method
 
+CCA can be VERY slow!
+
 ```{r, results=F, warning=F, message=F, fig.height=8, fig.width=16, eval=F }
 
 # find anchors
