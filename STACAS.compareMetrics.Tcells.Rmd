@@ -212,8 +212,8 @@ return(plot.list)
 
 ```
 
-```{r fig.height=6, fig.width=12}
 
+```{r fig.height=6, fig.width=12}
 plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.celltype)
 
 object.uncorrected <- object
@@ -413,6 +413,7 @@ plot.list <- plotIntegrationMetricsDim(plot.list,metricsShow.batch,metricsShow.c
 
 ```{r, results=F, warning=F, message=F, fig.height=8, fig.width=12, eval=T}
 
+
 # find anchors
 obj.list.seuratAnchors <- FindIntegrationAnchors(obj.list, anchor.features = hvg, reduction = "cca", dims = 1:ndim)
 
@@ -511,6 +512,7 @@ Visualize on UMAP space
 ```{r results=F, warning=F, message=F, eval=F}
 object_integrated_FastMNN <- RunUMAP(object_integrated_FastMNN, reduction = "mnn", dims=1:ndim)
 ```
+
 
 
 ```{r, results=F, warning=F, message=F, eval=F}
