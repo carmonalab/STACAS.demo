@@ -127,7 +127,10 @@ method.reduction <- "pca"
 metrics <- c("batch_LISI","batch_nLISI", "batch_nLISI_perCellType", "batch_nLISI_perCellType_means", 
 "celltype_nLISI", "celltype_nLISI_means", "celltype_ASW", "celltype_ASW_means")
 
-getIntegrationMetrics(object, meta.label = meta.label, meta.batch = meta.batch, method.reduction = method.reduction, lisi_perplexity = lisi_perplexity, metrics = metrics) 
+getIntegrationMetrics(object, meta.label = meta.label, meta.batch = meta.batch,
+                      method.reduction = method.reduction,
+                      #metrics = metrics
+                      lisi_perplexity = lisi_perplexity) 
 
 ```
 
@@ -139,7 +142,9 @@ metrics <- NULL # by default, calculate all available metrics
 integrationMetrics <- list()
 
 integrationMetrics <- lapply(object.list,function(object){
- getIntegrationMetrics(object, metrics = metrics, meta.label, meta.batch, lisi_perplexity, method.reduction)
+ getIntegrationMetrics(object, 
+                       metrics = metrics, 
+                       meta.label, meta.batch, lisi_perplexity, method.reduction)
 })
 ```
 
@@ -200,13 +205,15 @@ ggplot(integrationMetricsSummary,aes(x=reorder(Method,-value), y=value, fill=Met
     theme_bw() + 
     theme(legend.position="none", axis.text.x=element_text(angle = 90, vjust = 0.5, hjust=1)) + xlab("Dataset") + facet_wrap(~Metric, scales = "free")
 
+ggsave("plots/simulated.metrics.summary.pdf", height=9, width=9)
+
 ```
 
 
 ```{r fig.height=10, fig.width=10}
 p <- wrap_plots(lapply(plot.list,wrap_plots),ncol=2)
 p & theme(legend.position = "none")
-#ggsave("compareMetrics.umap.png",p, width = 30, height = 30)
+ggsave("plots/metrics_simulated.umap.png",p, width = 20, height = 18)
 ```
 
 

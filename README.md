@@ -8,7 +8,7 @@
 
 In [this demo](https://carmonalab.github.io/STACAS.demo/STACAS.demo.html) we will show the application of STACAS to integrate a collection of human immune cell datasets.
 
-See also how STACAS integration compares to Seurat, and how it avoids overcorrecting batch effects for heterogeneous data sets, at this [demo for T cell data integration](https://carmonalab.github.io/STACAS.demo/Tcell.demo.html)
+See also how STACAS compares to other integration methods, and how it avoids overcorrecting batch effects for heterogeneous data sets, at this [demo for T cell data integration](https://carmonalab.github.io/STACAS.demo/Tcell.demo.html)
 
 
 ### How to play the demos
