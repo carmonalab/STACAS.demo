@@ -106,8 +106,10 @@ object <- FindVariableFeatures(object, nfeatures = nfeatures) %>% NormalizeData(
 ```
 
 ```{r fig.height=7, fig.width=16}
-p1_pre <- DimPlot(object, group.by = "batch") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch before integration")
-p2_pre <- DimPlot(object, group.by = "final_annotation", label=T, label.size = 4) + theme(aspect.ratio = 1) + ggtitle("Cell labels before integration")
+p1_pre <- DimPlot(object, group.by = "batch") + theme(aspect.ratio = 1) +
+  ggtitle("Dataset/batch before integration")
+p2_pre <- DimPlot(object, group.by = "final_annotation", label=T, label.size = 4) +
+  theme(aspect.ratio = 1) + ggtitle("Cell labels before integration")
 
 
 p1_pre | p2_pre
@@ -128,7 +130,8 @@ lisi_perplexity <- 20
 
 integrationMetrics[["uncorrected"]] <- list()
 
-integrationMetrics[["uncorrected"]][["batch_LISI"]] <- mean(compute_lisi(object@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="batch", perplexity = lisi_perplexity)[[1]]) # perplexity=effective number of each cell's neighbors; use lower than default to make it faster
+# perplexity=effective number of each cell's neighbors; use lower than default to make it faster
+integrationMetrics[["uncorrected"]][["batch_LISI"]] <- mean(compute_lisi(object@reductions[["pca"]]@cell.embeddings,meta_data = object@meta.data, label_colnames="batch", perplexity = lisi_perplexity)[[1]]) 
 
 integrationMetrics[["uncorrected"]][["celltype_ASW"]] <- mean(compute_silhouette(object@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="final_annotation")[[1]])
 
@@ -169,7 +172,8 @@ object_integrated <- object_integrated %>% ScaleData() %>% RunPCA(npcs=ndim) %>%
 
 ```{r fig.height=7, fig.width=16}
 p1_int <- DimPlot(object_integrated, group.by = "batch") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch after integration")
-p2_int <- DimPlot(object_integrated, group.by = "final_annotation", label=T, label.size = 2) + theme(aspect.ratio = 1) + ggtitle("Cell labels after integration") 
+p2_int <- DimPlot(object_integrated, group.by = "final_annotation", label=T, label.size = 2) +
+  theme(aspect.ratio = 1) + ggtitle("Cell labels after integration") 
 
 p1_int | p2_int
 ```

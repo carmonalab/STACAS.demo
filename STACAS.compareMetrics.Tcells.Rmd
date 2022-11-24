@@ -149,19 +149,15 @@ lisi_perplexity <- 30 # number of neighbors for LISI (see below for details) to 
 How does the collection of datasets look without any integration?
 
 Run a standard Seurat pipeline for dimensionality reduction.
+```{r, eval=T}
+do_standard_symbols <- TRUE
 
-
-```{r, eval=F}
-library(data.table)
-
-#The table of standard genes in Ensembl can be download from [this link](https://github.com/carmonalab/scRNAseq_data_processing/blob/master/aux/EnsemblGenes105_Mmu_GRCm39.txt.gz)
-
-
-ensembleRef <- "aux/EnsemblGenes105_Mmu_GRCm39.txt.gz"
-
-object@assays$RNA@counts <- object@assays$RNA@data
-
-object <- STACAS:::standardizeGeneSymbols(obj = object, EnsemblGeneFile=ensembleRef)
+if (do_standard_symbols) {
+  object@assays$RNA@counts <- object@assays$RNA@data
+  data("EnsemblGenes105_Mmu_GRCm39")
+  
+  object <- StandardizeGeneSymbols(object, EnsemblGeneTable=EnsemblGenes105_Mmu_GRCm39)
+}
 ```
 
 ```{r message=F, warning=F,results=F}
