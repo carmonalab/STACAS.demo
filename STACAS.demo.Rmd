@@ -102,13 +102,14 @@ Run a standard Seurat pipeline for dimensionality reduction
 ```{r message=F, warning=F,results=F}
 nfeatures <- 1000
 ndim <- 20
-object <- FindVariableFeatures(object, nfeatures = nfeatures) %>% NormalizeData() %>% ScaleData() %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
+object <- FindVariableFeatures(object, nfeatures = nfeatures) %>%
+  NormalizeData() %>% ScaleData() %>%
+  RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
 ```
 
 ```{r fig.height=7, fig.width=16}
-p1_pre <- DimPlot(object, group.by = "batch") + theme(aspect.ratio = 1) +
-  ggtitle("Dataset/batch before integration")
-p2_pre <- DimPlot(object, group.by = "final_annotation", label=T, label.size = 4) +
+p1_pre <- DimPlot(object, group.by = "batch") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch before integration")
+p2_pre <- DimPlot(object, group.by = "final_annotation", label=T, label.size = 4) + NoLegend() +
   theme(aspect.ratio = 1) + ggtitle("Cell labels before integration")
 
 
@@ -130,8 +131,7 @@ lisi_perplexity <- 20
 
 integrationMetrics[["uncorrected"]] <- list()
 
-# perplexity=effective number of each cell's neighbors; use lower than default to make it faster
-integrationMetrics[["uncorrected"]][["batch_LISI"]] <- mean(compute_lisi(object@reductions[["pca"]]@cell.embeddings,meta_data = object@meta.data, label_colnames="batch", perplexity = lisi_perplexity)[[1]]) 
+integrationMetrics[["uncorrected"]][["batch_LISI"]] <- mean(compute_lisi(object@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="batch", perplexity = lisi_perplexity)[[1]]) # perplexity=effective number of each cell's neighbors; use lower than default to make it faster
 
 integrationMetrics[["uncorrected"]][["celltype_ASW"]] <- mean(compute_silhouette(object@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="final_annotation")[[1]])
 
@@ -172,7 +172,7 @@ object_integrated <- object_integrated %>% ScaleData() %>% RunPCA(npcs=ndim) %>%
 
 ```{r fig.height=7, fig.width=16}
 p1_int <- DimPlot(object_integrated, group.by = "batch") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch after integration")
-p2_int <- DimPlot(object_integrated, group.by = "final_annotation", label=T, label.size = 2) +
+p2_int <- DimPlot(object_integrated, group.by = "final_annotation", label=T, label.size = 2) + NoLegend() +
   theme(aspect.ratio = 1) + ggtitle("Cell labels after integration") 
 
 p1_int | p2_int
@@ -254,7 +254,8 @@ object_integrated_ss <- object_integrated_ss %>% RunUMAP(dims=1:ndim)
 
 ```{r fig.height=7, fig.width=16}
 p1_ss <- DimPlot(object_integrated_ss, group.by = "batch") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch after semi-supervised integration")
-p2_ss <- DimPlot(object_integrated_ss, group.by = "final_annotation", label=T, label.size = 2) + theme(aspect.ratio = 1) + ggtitle("Cell labels after semi-supervised integration")
+p2_ss <- DimPlot(object_integrated_ss, group.by = "final_annotation", label=T, label.size = 2) + 
+  NoLegend() + theme(aspect.ratio = 1) + ggtitle("Cell labels after semi-supervised integration")
 
 p1_ss | p2_ss
 ```
@@ -298,7 +299,28 @@ b <- integrationMetricsSummary %>% filter(Metric=="celltype_ASW") %>%
 a | b
 ```
 
+# Label transfer between datasets
 
+In some integration tasks, cell type annotations may be available only for a fraction of the datasets. In such cases, labels can be "transferred" to unannotated datasets by similarity to annotated cells. The `annotate.by.neighbors` function allows propagating cell labels to unannotated cells by K-nearest neighbor similarity to annotated cells.
+
+For example, if one of the datasets were lacking cell type labels (set to NA):
+```{r}
+incomplete <- object
+incomplete$final_annotation[incomplete$batch == "10X"] <- NA
+```
+
+Transfer labels from annotated to non-annotated cells
+```{r fig.height=6, fig.width=13}
+complete <- annotate.by.neighbors(incomplete, labels.col = "final_annotation")
+
+a <- DimPlot(incomplete, group.by = "final_annotation", label=T, label.size = 4) + NoLegend() +
+  theme(aspect.ratio = 1) + ggtitle("Incomplete annotation")
+
+b <- DimPlot(complete, group.by = "final_annotation", label=T, label.size = 4) + NoLegend() +
+  theme(aspect.ratio = 1) + ggtitle("Complete annotation")
+
+a | b
+```
 
 # Notes on data integration
 
