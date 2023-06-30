@@ -1,7 +1,7 @@
 ---
 title: "STACAS vs other integration methods on heterogeneous T cell datasets"
 author: "M. Andreatta and S. Carmona"
-date: "03/10/2022"
+date: "30/06/2023"
 output:
   rmdformats::readthedown:
     self-contained: true
@@ -365,6 +365,9 @@ integrationMetrics$ssSTACAS_full
 
 # Seurat CCA
 
+Canonical correlation analysis (CCA) is the default integration method implemented in Seurat.
+CCA aims to find linear combinations of features across data sets that are maximally correlated, identifying shared correlation structures across data sets (see [Butler et al.](https://www.nature.com/articles/nbt.4096)). Note: CCA can be very slow!
+
 ```{r, results=F, warning=F, message=F,  eval=T}
 # Find anchors
 cca.anchors <- FindIntegrationAnchors(obj.list, anchor.features = hvg,
@@ -401,8 +404,11 @@ integrationMetrics$Seurat_CCA
 
 ```
 
+By visual inspection and by the integration metrics, we can see the CCA achieve a high batch mixing, but performs poorly in terms of bio-conservation (low celltype_ASW). This combination is typical of methods that overcorrect batch effects, i.e. they mix cells of different types.
 
 # Seurat rPCA
+
+Reciprocal PCA (rPCA) is presented in Seurat as an alternative to CCA that is [faster and less prone to overcorrection](https://satijalab.org/seurat/articles/integration_rpca.html). 
 
 ```{r, results=F, warning=F, message=F }
 # Find anchors
@@ -413,6 +419,10 @@ rpca.anchors <- FindIntegrationAnchors(obj.list, anchor.features = hvg,
 object.rpca <- IntegrateData(anchorset = rpca.anchors, dims=1:ndim)
 
 rm(rpca.anchors)
+
+object.rpca <- object.rpca %>% ScaleData() %>%
+  RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
+
 ```
 
 
@@ -421,7 +431,7 @@ p1 <- DimPlot(object.rpca, group.by = meta.batch) +
   theme(aspect.ratio = 1) + ggtitle("Dataset/batch (Seurat rPCA)")
 p2 <- DimPlot(object.rpca, group.by = meta.label,
               label=T, label.size = 5) + NoLegend() +
-  theme(aspect.ratio = 1) + ggtitle("Cell labels (Seurat rPCA")
+  theme(aspect.ratio = 1) + ggtitle("Cell labels (Seurat rPCA)")
 
 p1 | p2
 ```
@@ -438,6 +448,8 @@ integrationMetrics$Seurat_rPCA
 
 
 # Harmony
+
+Harmony is a very popular method for single-cell integration data, based on iterative clustering of cells in reduced dimensionality spaces (see [Korsunsky et al.](https://www.nature.com/articles/s41592-019-0619-0)). Because it works directly in low dimensional spaces, this method is one of the fastest tools for batch effect correction.
 
 ```{r, message=F, warning=F,results=F}
 object.harmony <- RunHarmony(object, group.by.vars =  meta.batch) 
@@ -465,11 +477,13 @@ integrationMetrics[["Harmony"]] <- getIntegrationMetrics(object=object.harmony,
 
 integrationMetrics$Harmony
 ```
-
+Similarly to CCA, Harmony tends to overcorrect batch effects: it achieves high batch mixing, but performs poorly in terms of bio-conservation (low celltype_ASW).
 
 # FastMNN
 
-```{r, message=F, warning=F,results=F, eval=F}
+FastMNN is implemented in the [batchelor](https://bioconductor.org/packages/release/bioc/html/batchelor.html) Bioconductor package. It calculates mutual nearest neighbors (MNNs) in low-dimensional representations of the input data, and uses such MNNs to infer the magnitude and direction of the batch effect.
+
+```{r, message=F, warning=F,results=F}
 object.fastMNN <- RunFastMNN(obj.list, features = hvg, assay="RNA", d=ndim)
 
 object.fastMNN <- RunUMAP(object.fastMNN, reduction = "mnn", dims=1:ndim)
@@ -518,7 +532,7 @@ integrationMetricsSummary %>% filter(Metric %in% c("celltype_ASW","CiLISI")) %>%
                      segment.color = 'grey50') + theme_light()
 ```
 
-Semi-supervised STACAS is the best performing method when accounting for both batch mixing (high CiLISI) and preservation of biological variability (high celltype_ASW). Even limited and incomplete information about CD4 vs CD8 T cells was beneficial for integration, as seen by increased performance of ssSTACAS compared to unsupervised STACAS. Popular methods such as Harmony and Seurat CCA perform poorly on this integration task characterized by high cell type imbalance, as they overcorrect batch effect and indiscriminately mix cells of different types.
+Semi-supervised STACAS is the best performing method when accounting for both batch mixing (high CiLISI) and preservation of biological variability (high celltype_ASW). Even limited and incomplete information about CD4 vs CD8 T cells can be beneficial for integration, as seen by increased performance of ssSTACAS compared to unsupervised STACAS. Popular methods such as Harmony and Seurat CCA perform poorly on this integration task characterized by high cell type imbalance, as they overcorrect batch effect and indiscriminately mix cells of different types.
 
 
 # Further reading
@@ -531,7 +545,9 @@ The code for this demo can be found on [GitHub](https://github.com/carmonalab/ST
 
 * Andreatta A., Carmona S. J. (2021). *STACAS: Sub-Type Anchor Correction for Alignment in Seurat to integrate single-cell RNA-seq data.* - Bioinformatics
 
-* Luecken, M. D., Büttner, M., Chaichoompu, K., Danese, A., Interlandi, M., Müller, M. F., ... & Theis, F. J. (2022). *Benchmarking atlas-level data integration in single-cell genomics.* - Nature methods
+* Korsunsky, Ilya, et al. *Fast, sensitive and accurate integration of single-cell data with Harmony.* Nature methods 16.12 (2019): 1289-1296.
+
+* Butler, Andrew, et al. *Integrating single-cell transcriptomic data across different conditions, technologies, and species.* Nature biotechnology 36.5 (2018): 411-420.
 
 * Hao, Y., Hao, S., Andersen-Nissen, E., Mauck III, W. M., Zheng, S., Butler, A., ... & Satija, R. (2021). *Integrated analysis of multimodal single-cell data.* - Cell
 
