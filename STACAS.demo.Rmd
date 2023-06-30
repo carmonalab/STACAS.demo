@@ -1,7 +1,7 @@
 ---
 title: "Data integration with STACAS"
-author: "M. Andreatta, A. Berenstein and S. Carmona"
-date: "22/08/2022"
+author: "M. Andreatta and S. Carmona"
+date: "30/06/2023"
 output:
   rmdformats::readthedown:
     self-contained: true
@@ -14,15 +14,13 @@ knit: (function(input_file, encoding) {
  output_file=file.path(dirname(input_file), out_dir, 'STACAS.demo.html'))})
 ---
 
-# Introduction
 
-STACAS is a method for scRNA-seq data integration. It is based on the [Seurat](https://cran.r-project.org/web/packages/Seurat/index.html) integration framework, and adds the following innovations:
+STACAS is a method for scRNA-seq integration that is particuarly suited for collections of datasets with large cell type imbalance.
 
-* **anchors are filtered/down-weighted** based on their distance in reciprocal PCA space, calculated from the unscaled, normalized data
-* **integration trees** are constructed based on the 'centrality' of datasets, as measured by the sum of their anchor (distance-weighted) scores
-* **cell labels**, if known, can be given as input to the algorithm to perform **semi-supervised integration**
+Prior cell type knowledge, given as cell labels, can be provided to the algorithm to perform semi-supervised integration, leading to increased preservation of biological variability in the data. STACAS is robust to partial and imperfect cell type labels and can be applied to large-scale integrations.
 
-In this demo we will show the application of STACAS to integrate a collection of scRNA-seq datasets of immune cells from multiple donors, human tissues and studies, assembled by [Luecken et al.](https://www.nature.com/articles/s41592-021-01336-8) for their excellent benchmark.
+
+In this demo we will show the application of STACAS to integrate a collection of scRNA-seq datasets of immune cells from multiple donors, human tissues and studies, assembled by [Luecken et al.](https://www.nature.com/articles/s41592-021-01336-8) for their comprehensive benchmark.
 
 The data are available at: [figshare/12420968](https://figshare.com/articles/dataset/Benchmarking_atlas-level_data_integration_in_single-cell_genomics_-_integration_task_datasets_Immune_and_pancreas_/12420968)
 
@@ -95,9 +93,7 @@ These are stored in the `final_annotation` metadata column. Study of origin is s
 table(object$final_annotation, object$batch)[,1:5]
 ```
 
-How does the collection of datasets look without any integration?
-
-Run a standard Seurat pipeline for dimensionality reduction
+How does the collection of datasets look without any integration? Run a standard Seurat pipeline for dimensionality reduction and visualization.
 
 ```{r message=F, warning=F,results=F}
 nfeatures <- 1000
@@ -108,96 +104,21 @@ object <- FindVariableFeatures(object, nfeatures = nfeatures) %>%
 ```
 
 ```{r fig.height=7, fig.width=16}
-p1_pre <- DimPlot(object, group.by = "batch") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch before integration")
-p2_pre <- DimPlot(object, group.by = "final_annotation", label=T, label.size = 4) + NoLegend() +
+p1_pre <- DimPlot(object, group.by = "batch") + theme(aspect.ratio = 1) +
+  ggtitle("Dataset/batch before integration")
+p2_pre <- DimPlot(object, group.by = "final_annotation", label=T, label.size = 5) +
+  NoLegend() +
   theme(aspect.ratio = 1) + ggtitle("Cell labels before integration")
 
 
 p1_pre | p2_pre
 ```
 
-Although cells mostly cluster by the cell type (as annotated in individual datasets), there are also visible batch effects (seen as dataset-specific clustering) 
-
-
-Let's quantify dataset/batch mixing using the [LISI metric](https://github.com/immunogenomics/LISI) from the Raychaudhuri Lab, and conservation of biological information by means of Average Silhouette Width (ASW) of cell labels in the corrected PCA space:
-```{r}
-
-integrationMetrics <- list()
-
-if (!require("scIntegrationMetrics", quietly = TRUE))
-install_github("carmonalab/scIntegrationMetrics") #calculates LISI and Silhouette
-library(scIntegrationMetrics)
-lisi_perplexity <- 20
-
-integrationMetrics[["uncorrected"]] <- list()
-
-integrationMetrics[["uncorrected"]][["batch_LISI"]] <- mean(compute_lisi(object@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="batch", perplexity = lisi_perplexity)[[1]]) # perplexity=effective number of each cell's neighbors; use lower than default to make it faster
-
-integrationMetrics[["uncorrected"]][["celltype_ASW"]] <- mean(compute_silhouette(object@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="final_annotation")[[1]])
-
-integrationMetrics[["uncorrected"]]
-
-```
-
-
-
-We will now apply STACAS for correcting batch effects.
-
-# Standard integration
-
-STACAS takes a list of Seurat objects as input, so let's first split the merged object into a list of individual batches/datasets
-```{r, warning=F, collapse =T, message =F}
-obj.list <- SplitObject(object, split.by = "batch")
-```
-
-
-**STACAS Step 1:** Find integration anchors
-```{r, warning=F, collapse =T,message =F}
-stacas_anchors <- FindAnchors.STACAS(obj.list, 
-                                     anchor.features = nfeatures,
-                                     dims = 1:ndim)
-```
-
-**STACAS step 2:** Dataset integration
-```{r results=F, warning=F, message=F}
-object_integrated <- IntegrateData.STACAS(stacas_anchors, 
-                                              dims=1:ndim)
-```
-
-Calculate low-dimensional embeddings and visualize integration results in UMAP
-```{r results=F, warning=F, message=F}
-object_integrated <- object_integrated %>% ScaleData() %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
-```
-
-
-```{r fig.height=7, fig.width=16}
-p1_int <- DimPlot(object_integrated, group.by = "batch") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch after integration")
-p2_int <- DimPlot(object_integrated, group.by = "final_annotation", label=T, label.size = 2) + NoLegend() +
-  theme(aspect.ratio = 1) + ggtitle("Cell labels after integration") 
-
-p1_int | p2_int
-```
-
-**Quantify integration metrics**:
-```{r}
-integrationMetrics[["STACAS"]] <- list()
-
-integrationMetrics[["STACAS"]][["batch_LISI"]] <- mean(compute_lisi(object_integrated@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="batch", perplexity = lisi_perplexity)[[1]])
-
-integrationMetrics[["STACAS"]][["celltype_ASW"]] <- mean(compute_silhouette(object_integrated@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="final_annotation")[[1]])
-
-integrationMetrics[["STACAS"]]
-```
-
-
-Compared to the non-corrected data, we now observe: 
-i) increase in dataset/batch LISI (i.e. effective number of different batches in a cell neighborhood), indicating a higher mixing
-ii) increase in Silhouette/ASW, indicating that cells with the same annotation (ie of the same kind) were brought into proximity
-
+Although cells mostly cluster by the cell type (as annotated in individual datasets), there are also visible batch effects (seen as dataset-specific clustering).
 
 # One-liner STACAS
 
-The previous integration could have been run from the initial object with a single command:
+STACAS integration can be performed with a single one-liner command:
 ```{r, eval=F}
 object_integrated <- object %>% SplitObject(split.by = "batch") %>%
       Run.STACAS(dims = 1:ndim, anchor.features = nfeatures) %>%
@@ -206,13 +127,19 @@ object_integrated <- object %>% SplitObject(split.by = "batch") %>%
 DimPlot(object_integrated, group.by = "batch")
 ```
 
+# Step-by-step STACAS integration
 
-# STACAS integration guide trees
+For more control over the integration steps in STACAS, you can run individual steps separately and inspect intermediate results.
 
-Like Seurat, STACAS uses a guide tree to determine integration order.
-Optionally, you can check the integration guide tree automatically generated by STACAS 
-(e.g. are samples from the same sequencing technology or from similar tissues clustering together?)
+## 1. Find integration anchors between datasets/batches
+```{r, warning=F, collapse =T,message =F}
+obj.list <- SplitObject(object, split.by = "batch")
 
+stacas_anchors <- FindAnchors.STACAS(obj.list, 
+                                     anchor.features = nfeatures,
+                                     dims = 1:ndim)
+```
+## 2. Guide tree for integration order
 ```{r,collapse=T,message=F,warning=F}
 st1 <- SampleTree.STACAS(
   anchorset = stacas_anchors,
@@ -220,18 +147,32 @@ st1 <- SampleTree.STACAS(
   )
 ```
 
-You can tune or manually re-calculate this tree and pass it to `IntegrateData.STACAS`:
+Are samples from the same sequencing technology or from similar tissues clustering together? Different hierarchical clustering methods are available as `hclust.methods` parameter.
 
-**STACAS step 2 with pre-calculated integration tree**
-```{r results=F, warning=F, message=F, eval=F}
-object_integrated <- IntegrateData.STACAS(stacas_anchors, 
-                                              dims=1:ndim, 
-                                              sample.tree=st1
-                                              )
+## 3. Dataset integration
+```{r results=F, warning=F, message=F}
+object_integrated <- IntegrateData.STACAS(stacas_anchors,
+                                          sample.tree = st1,
+                                          dims=1:ndim)
+```
+
+Calculate low-dimensional embeddings and visualize integration results in UMAP
+```{r results=F, warning=F, message=F}
+object_integrated <- object_integrated %>% ScaleData() %>%
+  RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
 ```
 
 
+```{r fig.height=7, fig.width=16}
+p1_int <- DimPlot(object_integrated, group.by = "batch") +
+  theme(aspect.ratio = 1) + ggtitle("Dataset/batch after integration")
+p2_int <- DimPlot(object_integrated, group.by = "final_annotation", label=T, label.size = 5) +
+  NoLegend() + theme(aspect.ratio = 1) + ggtitle("Cell labels after integration") 
 
+p1_int | p2_int
+```
+
+At least visually, cells from different studies appear to be better mixed than the uncorrected data. In a later section we will use quantitative metrics to verify whether integration was successful in removing batch effects.
 
 # Semi-supervised integration
 
@@ -239,9 +180,10 @@ When available, cell type annotations can be used to guide the alignment. STACAS
 
 In this dataset, cells were annotated by the authors of the benchmark. For your own data, you may want to do manual annotation or apply one of several cell annotation tools, such as [SingleR](https://bioconductor.org/packages/release/bioc/html/SingleR.html), [Garnett](https://cole-trapnell-lab.github.io/garnett/) or [scGate](https://github.com/carmonalab/scGate). We will be posting some examples of cell type annotation using `scGate` in a different demo.
 
-** One-liner semi-supervised STACAS ** by indicating in `cell.labels` the metadata column that contains cell annotations
+Run **semi-supervised STACAS** as one-liner by indicating the metadata column that contains cell annotations (`cell.labels` in this case):
 ```{r, results=F, warning=F, message=F }
-object_integrated_ss <- obj.list %>% Run.STACAS(dims = 1:ndim, anchor.features = nfeatures, cell.labels = "final_annotation" )
+object_integrated_ss <- obj.list %>%
+  Run.STACAS(dims = 1:ndim, anchor.features = nfeatures, cell.labels = "final_annotation" )
 ```
 
 
@@ -253,40 +195,59 @@ object_integrated_ss <- object_integrated_ss %>% RunUMAP(dims=1:ndim)
 ```
 
 ```{r fig.height=7, fig.width=16}
-p1_ss <- DimPlot(object_integrated_ss, group.by = "batch") + theme(aspect.ratio = 1) + ggtitle("Dataset/batch after semi-supervised integration")
-p2_ss <- DimPlot(object_integrated_ss, group.by = "final_annotation", label=T, label.size = 2) + 
+p1_ss <- DimPlot(object_integrated_ss, group.by = "batch") +
+  theme(aspect.ratio = 1) +
+  ggtitle("Dataset/batch after semi-supervised integration")
+p2_ss <- DimPlot(object_integrated_ss, group.by = "final_annotation", label=T, label.size = 5) + 
   NoLegend() + theme(aspect.ratio = 1) + ggtitle("Cell labels after semi-supervised integration")
 
 p1_ss | p2_ss
 ```
 
 
-**Quantify integration metrics**:
-```{r}
-integrationMetrics[["semisupSTACAS"]] <- list()
+# Metrics of integration quality
 
-integrationMetrics[["semisupSTACAS"]][["batch_LISI"]] <- mean(compute_lisi(object_integrated_ss@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="batch", perplexity = lisi_perplexity)[[1]])
+Two main aspects should be considered to determine the quality of single-cell data integration: *(i)* batch mixing and *(ii)* preservation of biological variability.
 
-integrationMetrics[["semisupSTACAS"]][["celltype_ASW"]] <- mean(compute_silhouette(object_integrated_ss@reductions[["pca"]]@cell.embeddings, meta_data = object@meta.data, label_colnames="final_annotation")[[1]])
+Batch mixing measures whether similar cells originating from different batches are well mixed after integration. A common metrics to quantify batch mixing is the [integration LISI](https://github.com/immunogenomics/LISI); here we will use a celltype-aware version of the integration LISI (CiLISI), to account for different composition between datasets, as implemented in the [scIntegrationMetrics package](https://github.com/carmonalab/scIntegrationMetrics).
 
-integrationMetrics[["semisupSTACAS"]]
+Preservation of biological variability can be quantified by how close to each other cells of the same type are, and how separated from each other cells of different types are in the joint integrated embedding. A useful metric for preservation of biological variability is Average Silhouette Width (ASW) of cell labels (celltype_ASW) in the corrected PCA space.
+
+```{r message=F, warning=F, results=F}
+if (!require("scIntegrationMetrics", quietly = TRUE))
+install_github("carmonalab/scIntegrationMetrics") #calculates LISI and Silhouette
+
+library(scIntegrationMetrics)
+
+integrationMetrics <- list()
+integrationMetrics[["uncorrected"]] <- getIntegrationMetrics(object=object,
+                                                      metrics = c("CiLISI","celltype_ASW"),
+                                                      meta.label = "final_annotation",
+                                                      meta.batch = "batch")
+
+integrationMetrics[["STACAS"]] <- getIntegrationMetrics(object=object_integrated,
+                                                      metrics = c("CiLISI","celltype_ASW"),
+                                                      meta.label = "final_annotation",
+                                                      meta.batch = "batch")
+
+integrationMetrics[["ssSTACAS"]] <- getIntegrationMetrics(object=object_integrated_ss,
+                                                      metrics = c("CiLISI","celltype_ASW"),
+                                                      meta.label = "final_annotation",
+                                                      meta.batch = "batch")
+
 ```
-
-In this case, by using the semi-supervised approach we observe a gain in biological signal conservation, as measured by cell labels silhouette (celltype_ASW), with a similar dataset/batch mixing (batch_LISI) compared to the unsupervised integration.
-
-
-# Summary of Integration Metrics
-
 
 ```{r}
 if (!require("tidyr", quietly = TRUE))
 install.packages("tidyr")
 
-integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) %>% tibble::rownames_to_column() %>% rename(value=unlist.integrationMetrics.) %>% separate(rowname, c("Method","Metric"), sep="\\.")
+integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) |>
+  tibble::rownames_to_column() |> rename(value=unlist.integrationMetrics.) |>
+  separate(rowname, c("Method","Metric"), sep="\\.")
 
-a <- integrationMetricsSummary %>% filter(Metric=="batch_LISI") %>%
+a <- integrationMetricsSummary %>% filter(Metric=="CiLISI") %>%
   ggplot(aes(x=Method, y=value, fill=Method)) + geom_bar(stat="identity") + 
-  ggtitle("batch_LISI") + theme_bw() +
+  ggtitle("CiLISI") + theme_bw() +
   theme(legend.position="none", axis.text.x=element_blank())
   
 
@@ -298,6 +259,8 @@ b <- integrationMetricsSummary %>% filter(Metric=="celltype_ASW") %>%
 
 a | b
 ```
+
+Compared to the uncorrected data, both STACAS and ssSTACAS achieve better batch mixing (CiLISI), and improved clustering of cells of the same type (celltype_ASW). Semi-supervised integration mixes slightly less different batches compared to unsupervised STACAS, but is better at preserving biological variability (i.e. higher celltype_ASW).
 
 # Label transfer between datasets
 
@@ -313,10 +276,10 @@ Transfer labels from annotated to non-annotated cells
 ```{r fig.height=6, fig.width=13}
 complete <- annotate.by.neighbors(incomplete, labels.col = "final_annotation")
 
-a <- DimPlot(incomplete, group.by = "final_annotation", label=T, label.size = 4) + NoLegend() +
+a <- DimPlot(incomplete, group.by = "final_annotation", label=T, label.size = 5) + NoLegend() +
   theme(aspect.ratio = 1) + ggtitle("Incomplete annotation")
 
-b <- DimPlot(complete, group.by = "final_annotation", label=T, label.size = 4) + NoLegend() +
+b <- DimPlot(complete, group.by = "final_annotation", label=T, label.size = 5) + NoLegend() +
   theme(aspect.ratio = 1) + ggtitle("Complete annotation")
 
 a | b

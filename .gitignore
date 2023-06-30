@@ -2,3 +2,8 @@
 data.STACAS.demo/
 renv/
 raw.list.demo.rds
+.Rprofile
+aux/
+plots/
+.Rhistory
+scGateDB
