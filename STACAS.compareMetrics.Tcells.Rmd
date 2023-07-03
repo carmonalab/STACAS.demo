@@ -1,5 +1,5 @@
 ---
-title: "STACAS vs other integration methods on heterogeneous T cell datasets"
+title: "Comparing integration tools on heterogeneous T cell datasets"
 author: "M. Andreatta and S. Carmona"
 date: "30/06/2023"
 output:
@@ -16,9 +16,9 @@ knit: (function(input_file, encoding) {
 
 # Introduction
 
-Here we will compare integration results of STACAS with other R packages on a collection of scRNA-seq datasets of mouse tumor-infiltrating T cells from multiple studies from [Andreatta et al](https://www.nature.com/articles/s41467-021-23324-4)
+Here we will compare integration results of STACAS with other R packages on a collection of scRNA-seq datasets of mouse tumor-infiltrating T cells from multiple studies from [Andreatta et al. (2021) Nat Comms](https://www.nature.com/articles/s41467-021-23324-4). It consists of seven datasets from six different studies covering tumor and lymph node samples, comprising studies with both CD4+ and CD8+ T cells (*MC38_dLN*, *Ekiz* and *Xiong*), only CD8+ T cells (*Carmona*, *Singer*) or only CD4+ T cells (*Magen_dLN* and *Magen_TILs*). The collection of datasets is therefore ***imbalanced*** in terms of cell types, posing a challenging task to integration tools.
 
-The data are available at: [figshare/12478571](https://figshare.com/account/projects/123709/articles/12478571)
+The data are available on figshare at: [figshare/12478571](https://figshare.com/account/projects/123709/articles/12478571)
 
 # R environment
 
@@ -34,7 +34,7 @@ if (!requireNamespace("STACAS", quietly = TRUE))
   remotes::install_github("carmonalab/STACAS")
 
 if (!requireNamespace("harmony", quietly = TRUE))
-  remotes::install_github("immunogenomics/harmony", ref="6866e01")
+  install.packages("Harmony")
 
 if (!requireNamespace("SeuratWrappers", quietly = TRUE))
 remotes::install_github('satijalab/seurat-wrappers')
@@ -70,11 +70,11 @@ set.seed(seed)
 ```
 
 
-# Load test datasets
+# Download and load datasets
 
-A merged dataset is available as a Seurat object
+The commands below will download the collection of datasets as a Seurat object.
 ```{r}
-download <- F
+download <- T
 where <- 'aux'
 dir.create(where, showWarnings = FALSE)
 
@@ -98,21 +98,17 @@ meta.label <- "functional.cluster"
 ```
 
 
+For integration metrics, we will not consider labels that are contributed by a single dataset/batch for more than `thrMaxPerBatch` (90%).
+
 ```{r}
 batchLabels.table <- table(object@meta.data[[meta.label]], object@meta.data[[meta.batch]])
-batchLabels.table
-```
 
-For integration metrics, do not consider labels that are contributed in more than `thrMaxPerBatch` (90%) by a single dataset/batch.
-Then number of datasets over this threshold can be used to calculate normalized LISI scores per label.
-
-```{r}
 batchLabels <- round( batchLabels.table / rowSums(batchLabels.table) * 100) 
 batchLabels
 thrMaxPerBatch <- 90
 ```
 
-```{r}
+```{r results='asis'}
 removeLabels <- names(which(apply(batchLabels, 1, function(x) max(x) > thrMaxPerBatch)))
 
 removeLabels
@@ -130,7 +126,7 @@ ndim <- 20
 
 Standardize gene symbols, to ensure that the same genes are used across datasets.
 
-```{r, eval=T}
+```{r, eval=T, results='asis', collapse=T}
 do_standard_symbols <- TRUE
 
 if (do_standard_symbols) {
@@ -143,15 +139,17 @@ if (do_standard_symbols) {
 
 # Uncorrected data
 
-Run a standard Seurat pipeline for dimensionality reduction, to inspect the dataset collection prior to any batch effect correction.
+As a baseline, we can evaluate integration metrics on the uncorrected data prior to any batch effect correction.
 
+First, run a standard Seurat pipeline for dimensionality reduction:
 ```{r message=F, warning=F,results=F}
-object <- FindVariableFeatures(object, nfeatures = nfeatures) %>%
-  ScaleData() %>%
-  RunPCA(npcs=ndim) %>%
+object <- object |> NormalizeData() |>
+  FindVariableFeatures(nfeatures = nfeatures) |>
+  ScaleData() |>
+  RunPCA(npcs=ndim) |>
   RunUMAP(dims=1:ndim)
 ```
-```{r fig.height=7, fig.width=16}
+```{r fig.height=6, fig.width=14}
 p1 <- DimPlot(object, group.by = meta.batch) +
   theme(aspect.ratio = 1) + ggtitle("Dataset/batch (uncorrected)")
 p2 <- DimPlot(object, group.by = meta.label,
@@ -166,7 +164,7 @@ Clusters are largely driven by study/batch of origin rather than subtype. We can
 To quantify batch mixing, CiLISI is a cell type-aware version of the [integration LISI](https://github.com/immunogenomics/LISI) that accounts for different composition between datasets. On the other hand, preservation of biological variability can be quantified by how close to each other cells of the same type are, and how separated from each other cells of different types are in the joint integrated embedding. A useful metric for preservation of biological variability is Average Silhouette Width (ASW) of cell labels (celltype_ASW) in the corrected PCA space.
 
 Integration metrics prior to integration
-```{r, results=F, warning=F, message=F }
+```{r, warning=F, message=F, collapse=T }
 integrationMetrics <- list()
 useMetrics <- c("CiLISI","celltype_ASW")
 
@@ -194,8 +192,9 @@ obj.list <- SplitObject(object, split.by = meta.batch)
 ```{r message=F, warning=F,results=F, eval=T}
 
 for (i in 1:length(obj.list)) {
-  obj.list[[i]] <- NormalizeData(obj.list[[i]], assay="RNA", normalization.method="LogNormalize")
-  obj.list[[i]] <- FindVariableFeatures(obj.list[[i]], nfeatures=nfeatures*2)
+  obj.list[[i]] <- obj.list[[i]] |>
+                  NormalizeData(assay="RNA") |>
+                  FindVariableFeatures(nfeatures=nfeatures*2)
 }
 
 hvg <- SelectIntegrationFeatures(obj.list, nfeatures = nfeatures)
@@ -206,10 +205,10 @@ Re-calculate dimensionality reduction using `hvg`
 ```{r message=F, warning=F,results=F}
 object.sh <- object
 object.sh@assays$RNA@var.features <- hvg
-object.sh <- ScaleData(object.sh) %>% RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
+object.sh <- ScaleData(object.sh) |> RunPCA(npcs=ndim) |> RunUMAP(dims=1:ndim)
 ```
 
-```{r fig.height=7, fig.width=16}
+```{r fig.height=6, fig.width=14}
 p1 <- DimPlot(object.sh, group.by = meta.batch) +
   theme(aspect.ratio = 1) + ggtitle("Dataset/batch (shared features)")
 p2 <- DimPlot(object.sh, group.by = meta.label,
@@ -219,7 +218,7 @@ p2 <- DimPlot(object.sh, group.by = meta.label,
 p1 | p2
 ```
 
-```{r message=F, warning=F,results=F} 
+```{r message=F, warning=F,collapse=T} 
 method = "sharedFeatures"
 
 integrationMetrics[[method]] <- getIntegrationMetrics(object=object.sh,
@@ -237,11 +236,11 @@ integrationMetrics$sharedFeatures
 
 Run STACAS with default parameters on the list of objects
 ```{r, message=F, warning=F,results=F}
-object.stacas <- Run.STACAS(obj.list, dims = 1:ndim, anchor.features = hvg) %>%
+object.stacas <- Run.STACAS(obj.list, dims = 1:ndim, anchor.features = hvg) |>
       RunUMAP(dims = 1:ndim) 
 ```
 
-```{r fig.height=7, fig.width=16}
+```{r fig.height=6, fig.width=14}
 p1 <- DimPlot(object.stacas, group.by = meta.batch) +
   theme(aspect.ratio = 1) + ggtitle("Dataset/batch (STACAS)")
 p2 <- DimPlot(object.stacas, group.by = meta.label,
@@ -251,7 +250,7 @@ p2 <- DimPlot(object.stacas, group.by = meta.label,
 p1 | p2
 ```
 
-```{r message=F, warning=F,results=F} 
+```{r message=F, warning=F,collapse=T} 
 integrationMetrics[["STACAS"]] <- getIntegrationMetrics(object=object.stacas,
                                                       metrics = useMetrics,
                                                       meta.label = meta.label,
@@ -286,7 +285,7 @@ obj.list <- lapply(obj.list, function(x) {
 ```
 
 We can see that some datasets contain only CD4 or CD8 T cells, others contain both:
-```{r}
+```{r collapse=T}
 table(obj.list[["Xiong"]]$scGate_multi)
 table(obj.list[["Ekiz"]]$scGate_multi)
 table(obj.list[["Magen_TILs"]]$scGate_multi)
@@ -305,7 +304,7 @@ object.ss <- Run.STACAS(obj.list, dims = 1:ndim,
 Note that there is no need for ALL cells to be annotated: we recommend to set labels to *NA* or *unknown* for cells that cannot be confidently annotated, and they won't be penalized for label inconsistency. In addition, you can decide how much weight to give to cell labels with the `label.confidence` parameter (from 0 to 1).
 
 
-```{r fig.height=7, fig.width=16}
+```{r fig.height=6, fig.width=14}
 p1 <- DimPlot(object.ss, group.by = meta.batch) +
   theme(aspect.ratio = 1) + ggtitle("Dataset/batch (ssSTACAS CD4/CD8)")
 p2 <- DimPlot(object.ss, group.by = meta.label,
@@ -316,7 +315,7 @@ p1 | p2
 ```
 
 
-```{r message=F, warning=F,results=F} 
+```{r message=F, warning=F,collapse=T} 
 integrationMetrics[["ssSTACAS"]] <- getIntegrationMetrics(object=object.ss,
                                                       metrics = useMetrics,
                                                       meta.label = meta.label,
@@ -342,7 +341,7 @@ object.ss.full <- Run.STACAS(obj.list, dims = 1:ndim,
 
 Note that there is no need for ALL cells to be annotated: we recommend to set labels to *NA* or *unknown* for cells that cannot be confidently annotated, and they won't be penalized for label inconsistency. In addition, you can decide how much weight to give to cell labels with the `label.confidence` parameter (from 0 to 1).
 
-```{r fig.height=7, fig.width=16}
+```{r fig.height=6, fig.width=14}
 p1 <- DimPlot(object.ss.full, group.by = meta.batch) +
   theme(aspect.ratio = 1) + ggtitle("Dataset/batch (ssSTACAS)")
 p2 <- DimPlot(object.ss.full, group.by = meta.label,
@@ -352,7 +351,7 @@ p2 <- DimPlot(object.ss.full, group.by = meta.label,
 p1 | p2
 ```
 
-```{r message=F, warning=F,results=F} 
+```{r message=F, warning=F, collapse=T} 
 integrationMetrics[["ssSTACAS_full"]] <- getIntegrationMetrics(object=object.ss.full,
                                                       metrics = useMetrics,
                                                       meta.label = meta.label,
@@ -379,11 +378,11 @@ rm(cca.anchors)
 
 
 # Visualize on UMAP space
-object.cca <- object.cca %>% ScaleData() %>%
-  RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
+object.cca <- object.cca |> ScaleData() |>
+  RunPCA(npcs=ndim) |> RunUMAP(dims=1:ndim)
 ```
 
-```{r fig.height=7, fig.width=16}
+```{r fig.height=6, fig.width=14}
 p1 <- DimPlot(object.cca, group.by = meta.batch) +
   theme(aspect.ratio = 1) + ggtitle("Dataset/batch (Seurat CCA)")
 p2 <- DimPlot(object.cca, group.by = meta.label,
@@ -393,7 +392,7 @@ p2 <- DimPlot(object.cca, group.by = meta.label,
 p1 | p2
 ```
 
-```{r message=F, warning=F,results=F} 
+```{r message=F, warning=F, collapse=T} 
 integrationMetrics[["Seurat_CCA"]] <- getIntegrationMetrics(object=object.cca,
                                                       metrics = useMetrics,
                                                       meta.label = meta.label,
@@ -404,7 +403,7 @@ integrationMetrics$Seurat_CCA
 
 ```
 
-By visual inspection and by the integration metrics, we can see the CCA achieve a high batch mixing, but performs poorly in terms of bio-conservation (low celltype_ASW). This combination is typical of methods that overcorrect batch effects, i.e. they mix cells of different types.
+By visual inspection and by the integration metrics, we can see the CCA achieve a high batch mixing, but performs poorly in terms of bio-conservation (low celltype_ASW). This combination is typical of methods that overcorrect batch effects, i.e. they mix well datasets, by they also mix cells of different types.
 
 # Seurat rPCA
 
@@ -420,13 +419,13 @@ object.rpca <- IntegrateData(anchorset = rpca.anchors, dims=1:ndim)
 
 rm(rpca.anchors)
 
-object.rpca <- object.rpca %>% ScaleData() %>%
-  RunPCA(npcs=ndim) %>% RunUMAP(dims=1:ndim)
+object.rpca <- object.rpca |> ScaleData() |>
+  RunPCA(npcs=ndim) |> RunUMAP(dims=1:ndim)
 
 ```
 
 
-```{r fig.height=7, fig.width=16}
+```{r fig.height=6, fig.width=14}
 p1 <- DimPlot(object.rpca, group.by = meta.batch) +
   theme(aspect.ratio = 1) + ggtitle("Dataset/batch (Seurat rPCA)")
 p2 <- DimPlot(object.rpca, group.by = meta.label,
@@ -436,7 +435,7 @@ p2 <- DimPlot(object.rpca, group.by = meta.label,
 p1 | p2
 ```
 
-```{r message=F, warning=F,results=F} 
+```{r message=F, warning=F, collapse=T} 
 integrationMetrics[["Seurat_rPCA"]] <- getIntegrationMetrics(object=object.rpca,
                                                       metrics = useMetrics,
                                                       meta.label = meta.label,
@@ -457,7 +456,7 @@ object.harmony <- RunHarmony(object, group.by.vars =  meta.batch)
 object.harmony <- RunUMAP(object.harmony, reduction = "harmony", dims=1:ndim)
 ```
 
-```{r fig.height=7, fig.width=16}
+```{r fig.height=6, fig.width=14}
 p1 <- DimPlot(object.harmony, group.by = meta.batch) +
   theme(aspect.ratio = 1) + ggtitle("Dataset/batch (Harmony)")
 p2 <- DimPlot(object.harmony, group.by = meta.label,
@@ -467,7 +466,7 @@ p2 <- DimPlot(object.harmony, group.by = meta.label,
 p1 | p2
 ```
 
-```{r message=F, warning=F,results=F} 
+```{r message=F, warning=F, collapse=T} 
 integrationMetrics[["Harmony"]] <- getIntegrationMetrics(object=object.harmony,
                                                       metrics = useMetrics,
                                                       method.reduction = "harmony",
@@ -477,8 +476,6 @@ integrationMetrics[["Harmony"]] <- getIntegrationMetrics(object=object.harmony,
 
 integrationMetrics$Harmony
 ```
-Similarly to CCA, Harmony tends to overcorrect batch effects: it achieves high batch mixing, but performs poorly in terms of bio-conservation (low celltype_ASW).
-
 # FastMNN
 
 FastMNN is implemented in the [batchelor](https://bioconductor.org/packages/release/bioc/html/batchelor.html) Bioconductor package. It calculates mutual nearest neighbors (MNNs) in low-dimensional representations of the input data, and uses such MNNs to infer the magnitude and direction of the batch effect.
@@ -489,7 +486,7 @@ object.fastMNN <- RunFastMNN(obj.list, features = hvg, assay="RNA", d=ndim)
 object.fastMNN <- RunUMAP(object.fastMNN, reduction = "mnn", dims=1:ndim)
 ```
 
-```{r fig.height=7, fig.width=16}
+```{r fig.height=6, fig.width=14}
 p1 <- DimPlot(object.fastMNN, group.by = meta.batch) +
   theme(aspect.ratio = 1) + ggtitle("Dataset/batch (FastMNN)")
 p2 <- DimPlot(object.fastMNN, group.by = meta.label,
@@ -499,7 +496,7 @@ p2 <- DimPlot(object.fastMNN, group.by = meta.label,
 p1 | p2
 ```
 
-```{r message=F, warning=F,results=F} 
+```{r message=F, warning=F, collapse=T} 
 integrationMetrics[["FastMNN"]] <- getIntegrationMetrics(object=object.fastMNN,
                                                       metrics = useMetrics,
                                                       method.reduction = "mnn",
@@ -513,17 +510,17 @@ integrationMetrics$FastMNN
 
 # Summary of Integration Metrics
 
-```{r fig.height=5, fig.width=6}
+```{r fig.height=4, fig.width=6}
 library(ggrepel)
 
-integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) %>%
-  tibble::rownames_to_column() %>%
-  dplyr::rename(value=unlist.integrationMetrics.) %>%
+integrationMetricsSummary <- data.frame(unlist(integrationMetrics)) |>
+  tibble::rownames_to_column() |>
+  dplyr::rename(value=unlist.integrationMetrics.) |>
   separate(rowname, c("Method","Metric"), sep="\\.")
 
 
-integrationMetricsSummary %>% filter(Metric %in% c("celltype_ASW","CiLISI")) %>%
-  pivot_wider(names_from = Metric, values_from = value ) %>%
+integrationMetricsSummary |> filter(Metric %in% c("celltype_ASW","CiLISI")) |>
+  pivot_wider(names_from = Metric, values_from = value ) |>
   ggplot(aes(x=CiLISI, y=celltype_ASW, label=Method)) +
   geom_point(aes(color=Method)) +
   geom_label_repel(aes(label = Method),
@@ -532,7 +529,9 @@ integrationMetricsSummary %>% filter(Metric %in% c("celltype_ASW","CiLISI")) %>%
                      segment.color = 'grey50') + theme_light()
 ```
 
-Semi-supervised STACAS is the best performing method when accounting for both batch mixing (high CiLISI) and preservation of biological variability (high celltype_ASW). Even limited and incomplete information about CD4 vs CD8 T cells can be beneficial for integration, as seen by increased performance of ssSTACAS compared to unsupervised STACAS. Popular methods such as Harmony and Seurat CCA perform poorly on this integration task characterized by high cell type imbalance, as they overcorrect batch effect and indiscriminately mix cells of different types.
+***Semi-supervised STACAS*** is the best performing method when accounting for both batch mixing (high *CiLISI*) and preservation of biological variability (high *celltype_ASW*). Even limited and incomplete information about CD4 vs CD8 T cells can be beneficial for integration, as seen by increased performance of ***ssSTACAS*** compared to ***unsupervised STACAS***. ***FastMNN*** also performed well, with similar performance to unsupervised STACAS. Popular methods such as ***Harmony***, ***Seurat rPCA*** and ***Seurat CCA*** perform poorly on this integration task characterized by high cell type imbalance. In particular, ***Seurat CCA*** appears to overcorrect batch effects, indiscriminately mixing cells of different types. Importantly, a good selection of variable features to reduce the dimensionality of the data can alone improve the preservation of biological variability (see ***sharedFeatures*** vs. ***uncorrected***).
+
+Ideally, integration methods should be able mix well different datasets (high *CiLISI*) while keeping together cells of the same type (high *celltype_ASW*). For the integration of balanced datasets in terms of cell types (e.g. technical replicates of the same experiment), methods such as ***Seurat CCA*** or ***Harmony*** can perform well. However, in integration tasks characterized by high cell type imbalance, it is preferable to choose integration methods that preserve biological variability, such as ***STACAS*** and ***FastMNN***. Additionally, when prior cell type information is available, it can be used as input to supervised methods such ***ssSTACAS*** to guide integration and avoid overcorrection of batch effects.
 
 
 # Further reading
