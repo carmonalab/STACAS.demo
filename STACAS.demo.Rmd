@@ -139,6 +139,7 @@ stacas_anchors <- FindAnchors.STACAS(obj.list,
                                      anchor.features = nfeatures,
                                      dims = 1:ndim)
 ```
+
 ## 2. Guide tree for integration order
 ```{r,collapse=T,message=F,warning=F}
 st1 <- SampleTree.STACAS(
@@ -183,7 +184,7 @@ In this dataset, cells were annotated by the authors of the benchmark. For your 
 Run **semi-supervised STACAS** as one-liner by indicating the metadata column that contains cell annotations (`cell.labels` in this case):
 ```{r, results=F, warning=F, message=F }
 object_integrated_ss <- obj.list %>%
-  Run.STACAS(dims = 1:ndim, anchor.features = nfeatures, cell.labels = "final_annotation" )
+  Run.STACAS(dims = 1:ndim, anchor.features = nfeatures, cell.labels = "final_annotation")
 ```
 
 
