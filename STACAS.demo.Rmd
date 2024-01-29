@@ -1,7 +1,7 @@
 ---
 title: "Data integration with STACAS"
 author: "M. Andreatta and S. Carmona"
-date: "30/06/2023"
+date: "29/01/2024"
 output:
   rmdformats::readthedown:
     self-contained: true
@@ -53,7 +53,7 @@ set.seed(seed)
 
 Download the dataset of human immune cells assembled by [Luecken et al.](https://www.nature.com/articles/s41592-021-01336-8), and convert them to Seurat objects.
 ```{r}
-download <- F
+download <- FALSE
 where <- 'aux'
 dir.create(where, showWarnings = FALSE)
 
@@ -61,7 +61,7 @@ rds.path <- sprintf("%s/Immune_ALL_human.rds", where)
 
 if(download){
 
-  options(timeout=500)
+  options(timeout=5000)
   url <- "https://figshare.com/ndownloader/files/25717328"
   h5.path <- sprintf("%s/Immune_ALL_human.rds", where)
   download.file(url = url, destfile = h5.path)
@@ -70,7 +70,7 @@ if(download){
     install.packages("BiocManager")
 
   if (!require("zellkonverter", quietly = TRUE))
-    install.packages("zellkonverter") # to convert from h5ad to R object
+    install.packages("zellkonverter") # to convert from 'h5ad' to 'sce' object
   
   #Convert to Seurat 
   object.sce <- zellkonverter::readH5AD(h5.path)
@@ -119,7 +119,7 @@ Although cells mostly cluster by the cell type (as annotated in individual datas
 # One-liner STACAS
 
 STACAS integration can be performed with a single one-liner command:
-```{r, eval=F}
+```{r, warning=F, collapse =T,message =F}
 object_integrated <- object %>% SplitObject(split.by = "batch") %>%
       Run.STACAS(dims = 1:ndim, anchor.features = nfeatures) %>%
       RunUMAP(dims = 1:ndim) 
@@ -238,7 +238,7 @@ integrationMetrics[["ssSTACAS"]] <- getIntegrationMetrics(object=object_integrat
 
 ```
 
-```{r}
+```{r warning=FALSE, message=F}
 if (!require("tidyr", quietly = TRUE))
 install.packages("tidyr")
 
@@ -300,9 +300,7 @@ if (!require("SignatuR", quietly = TRUE))
     install_github("carmonalab/SignatuR")
 
 library(SignatuR)
-print(SignatuR$Hs)
-
-#Retrieve full list of signautures for human
+#Retrieve full list of signatures for human
 hs.sign <- GetSignature(SignatuR$Hs)
 ```
 
@@ -330,6 +328,8 @@ The code for this demo can be found on [GitHub](https://github.com/carmonalab/ST
 # References
 
 * Andreatta A., Carmona S. J. (2021). *STACAS: Sub-Type Anchor Correction for Alignment in Seurat to integrate single-cell RNA-seq data.* - Bioinformatics
+
+* Andreatta M, Herault L, Gueguen P, Gfeller D, Berenstein AJ, Carmona SJ (2024) *Semi-supervised integration of single-cell transcriptomics data* - Nature Communications
 
 * Luecken, M. D., Büttner, M., Chaichoompu, K., Danese, A., Interlandi, M., Müller, M. F., ... & Theis, F. J. (2022). *Benchmarking atlas-level data integration in single-cell genomics.* - Nature methods
 

@@ -1,7 +1,7 @@
 ---
 title: "Comparing integration tools on heterogeneous T cell datasets"
 author: "M. Andreatta and S. Carmona"
-date: "30/06/2023"
+date: "29/01/2024"
 output:
   rmdformats::readthedown:
     self-contained: true
@@ -131,9 +131,9 @@ do_standard_symbols <- TRUE
 
 if (do_standard_symbols) {
   object@assays$RNA@counts <- object@assays$RNA@data
-  data("EnsemblGenes105_Mmu_GRCm39")
+  data("EnsemblGeneTable.Mm")
   
-  object <- StandardizeGeneSymbols(object, EnsemblGeneTable=EnsemblGenes105_Mmu_GRCm39)
+  object <- StandardizeGeneSymbols(object, EnsemblGeneTable=EnsemblGeneTable.Mm)
 }
 ```
 
@@ -543,6 +543,8 @@ The code for this demo can be found on [GitHub](https://github.com/carmonalab/ST
 # References
 
 * Andreatta A., Carmona S. J. (2021). *STACAS: Sub-Type Anchor Correction for Alignment in Seurat to integrate single-cell RNA-seq data.* - Bioinformatics
+
+* Andreatta M, Herault L, Gueguen P, Gfeller D, Berenstein AJ, Carmona SJ (2024) *Semi-supervised integration of single-cell transcriptomics data* - Nature Communications
 
 * Korsunsky, Ilya, et al. *Fast, sensitive and accurate integration of single-cell data with Harmony.* Nature methods 16.12 (2019): 1289-1296.
 
