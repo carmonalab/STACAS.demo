@@ -631,8 +631,8 @@
       "RemoteHost": "api.github.com",
       "RemoteRepo": "STACAS",
       "RemoteUsername": "carmonalab",
-      "RemoteRef": "dev",
-      "RemoteSha": "b4a221f2cbe6a523dd7dda02252ada11b8409ef1",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "2df30f9c331913233f1e26b67cdbe6ead5351540",
       "Requirements": [
         "BiocNeighbors",
         "BiocParallel",
@@ -644,7 +644,7 @@
         "pbapply",
         "stats"
       ],
-      "Hash": "4d19131acfca22ab0f148c32843d54a5"
+      "Hash": "c920072f0e6c352c133ec44048c7cf43"
     },
     "ScaledMatrix": {
       "Package": "ScaledMatrix",
@@ -2547,14 +2547,14 @@
     },
     "scIntegrationMetrics": {
       "Package": "scIntegrationMetrics",
-      "Version": "0.5",
+      "Version": "1.1",
       "Source": "GitHub",
       "RemoteType": "github",
       "RemoteHost": "api.github.com",
       "RemoteRepo": "scIntegrationMetrics",
       "RemoteUsername": "carmonalab",
       "RemoteRef": "HEAD",
-      "RemoteSha": "2973033223da14e00e8ab762ee9bf2d4ed404705",
+      "RemoteSha": "fff6bb6eaa2d4c4cbc15b59a8d1820956b5fb0fa",
       "Requirements": [
         "R",
         "RANN",
@@ -2564,7 +2564,7 @@
         "ggplot2",
         "vegan"
       ],
-      "Hash": "a61749cd448af5dda292bd7b6da2f2c1"
+      "Hash": "629ff7ddddee7d6bc61694df5de4ae4a"
     },
     "scales": {
       "Package": "scales",
