@@ -288,13 +288,20 @@ a | b
 
 # Notes on data integration
 
-1. The first critical step in batch effect correction is to ensure that the **gene names in your datasets are harmonized**. If different studies use different naming conventions, synonyms, etc., methods for dimensionality reduction will treat these genes as entirely different variables, and introducing artificial differences between datasets. It is recommended that your pre-processing pipeline takes care of resolving ambiguities in gene naming across datasets. You can use  `STACAS:::standardizeGeneSymbols` but there are other tools such as [HGNChelper](https://cran.r-project.org/web/packages/HGNChelper/index.html)
+1. The first critical step in batch effect correction is to ensure that the **gene names in your datasets are harmonized**. If different studies use different naming conventions, synonyms, etc., methods for dimensionality reduction will treat these genes as entirely different variables, and introducing artificial differences between datasets. It is recommended that your pre-processing pipeline takes care of resolving ambiguities in gene naming across datasets. A useful function is `STACAS::StandardizeGeneSymbols()`, but there are also other tools such as [HGNChelper](https://cran.r-project.org/web/packages/HGNChelper/index.html)
 
-2. The calculation of highly variable genes (HVG) is a fundamental step for dimensionality reduction and integration. We recommend excluding certain classes of genes, e.g. mitochondrial, ribosomal, heat-shock genes, from the list of HVG, as their expression are typically more strongly associated to technical variation  than to actual biological differences. The `FindVariableGenes.STACAS()` function allows providing a list of genes to exclude from HVG; see an example below.
+```{r eval=F}
+#load conversion table
+library(STACAS)
+data(EnsemblGeneTable.Hs)
 
+#convert gene names separately for each sample
+obj.list <- lapply(obj.list, function(x) {
+  StandardizeGeneSymbols(x, EnsemblGeneTable = EnsemblGeneTable.Hs)
+})
+```
 
-
-We can use the collection of signatures stored in [SignatuR package](https://github.com/carmonalab/SignatuR)
+2. The calculation of highly variable genes (HVG) is a fundamental step for dimensionality reduction and integration. We recommend excluding certain classes of genes, e.g. mitochondrial, ribosomal, heat-shock genes, from the list of HVG, as their expression are typically more strongly associated to technical variation  than to actual biological differences. The `FindVariableGenes.STACAS()` function allows providing a list of genes to exclude from HVG; see an example below. We can use the collection of signatures stored in [SignatuR package](https://github.com/carmonalab/SignatuR)
 ```{r eval=T}
 if (!require("SignatuR", quietly = TRUE))
     install_github("carmonalab/SignatuR")
@@ -315,10 +322,6 @@ object_integrated_blockList <- Run.STACAS(obj.list, genesBlockList = my.genes.bl
 
 ```
 
-```{r}
-sessionInfo()
-```
-
 # Further reading
 
 The STACAS package and installation instructions are available at: [STACAS package](https://github.com/carmonalab/STACAS)
@@ -335,4 +338,9 @@ The code for this demo can be found on [GitHub](https://github.com/carmonalab/ST
 
 * Hao, Y., Hao, S., Andersen-Nissen, E., Mauck III, W. M., Zheng, S., Butler, A., ... & Satija, R. (2021). *Integrated analysis of multimodal single-cell data.* - Cell
 
+# Session info
+
+```{r}
+sessionInfo()
+```
 
