@@ -215,6 +215,7 @@ Batch mixing measures whether similar cells originating from different batches a
 Preservation of biological variability can be quantified by how close to each other cells of the same type are, and how separated from each other cells of different types are in the joint integrated embedding. A useful metric for preservation of biological variability is Average Silhouette Width (ASW) of cell labels (celltype_ASW) in the corrected PCA space.
 
 ```{r message=F, warning=F, results=F}
+library(remotes)
 if (!require("scIntegrationMetrics", quietly = TRUE))
 install_github("carmonalab/scIntegrationMetrics") #calculates LISI and Silhouette
 
